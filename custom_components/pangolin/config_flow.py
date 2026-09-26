@@ -10,6 +10,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import (
     PangolinAuthError,
@@ -20,10 +25,12 @@ from .api import (
 )
 from .const import CONF_ORG_ID, DOMAIN
 
+PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+
 USER_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_URL): str,
-        vol.Required(CONF_API_KEY): str,
+        vol.Required(CONF_API_KEY): PASSWORD_SELECTOR,
         vol.Required(CONF_ORG_ID): str,
         vol.Optional(CONF_VERIFY_SSL, default=True): bool,
     }
@@ -96,6 +103,6 @@ class PangolinConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = error
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_API_KEY): str}),
+            data_schema=vol.Schema({vol.Required(CONF_API_KEY): PASSWORD_SELECTOR}),
             errors=errors,
         )
