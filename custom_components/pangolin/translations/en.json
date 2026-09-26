@@ -21,6 +21,17 @@
         "data": {
           "api_key": "API key"
         }
+      },
+      "features": {
+        "title": "Choose features",
+        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.\n\nTo tick or untick everything, pick a bulk action and submit. The list is redrawn with the new ticks for you to review, then submit again to save.",
+        "data": {
+          "features": "Features",
+          "bulk": "Bulk selection (optional)"
+        },
+        "data_description": {
+          "bulk": "Applied instead of saving when set."
+        }
       }
     },
     "error": {
@@ -37,6 +48,9 @@
     "binary_sensor": {
       "site_online": {
         "name": "Online"
+      },
+      "resource_enabled": {
+        "name": "Enabled"
       }
     },
     "sensor": {
@@ -62,6 +76,45 @@
     "switch": {
       "resource_enabled": {
         "name": "Enabled"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "features": {
+        "title": "Choose features",
+        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.\n\nTo tick or untick everything, pick a bulk action and submit. The list is redrawn with the new ticks for you to review, then submit again to save.",
+        "data": {
+          "features": "Features",
+          "bulk": "Bulk selection (optional)"
+        },
+        "data_description": {
+          "bulk": "Applied instead of saving when set."
+        }
+      }
+    },
+    "abort": {
+      "cannot_connect": "Could not reach the Pangolin Integration API.",
+      "invalid_auth": "The API key was rejected. Re-enter it from the integration page.",
+      "unknown": "Unexpected response from Pangolin."
+    }
+  },
+  "selector": {
+    "feature": {
+      "options": {
+        "public_status": "Public resources: status (health and enabled state)",
+        "public_control": "Public resources: enable/disable switches",
+        "private_status": "Private resources: status (enabled state)",
+        "private_control": "Private resources: enable/disable switches",
+        "site_restart": "Sites: restart buttons",
+        "site_traffic": "Sites: data in/out sensors"
+      }
+    },
+    "bulk": {
+      "options": {
+        "select_all": "Select all",
+        "select_none": "Unselect all",
+        "invert": "Invert selection"
       }
     }
   }

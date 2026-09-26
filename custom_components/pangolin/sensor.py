@@ -13,6 +13,7 @@ from homeassistant.const import EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import LEVEL_OFF, OPT_PUBLIC, OPT_TRAFFIC
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
     PangolinOrgEntity,
@@ -31,15 +32,26 @@ async def async_setup_entry(
     entry: PangolinConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    options = entry.runtime_data.options
     async_add_entities([PangolinSitesOnline(entry.runtime_data)])
     add_entities_dynamically(
         entry,
         async_add_entities,
-        site_factory=lambda c, sid: [
-            PangolinSiteTraffic(c, sid, "megabytesIn", "data_in"),
-            PangolinSiteTraffic(c, sid, "megabytesOut", "data_out"),
-        ],
-        resource_factory=lambda c, rid: [PangolinResourceHealth(c, rid)],
+        site_factory=(
+            (
+                lambda c, sid: [
+                    PangolinSiteTraffic(c, sid, "megabytesIn", "data_in"),
+                    PangolinSiteTraffic(c, sid, "megabytesOut", "data_out"),
+                ]
+            )
+            if options[OPT_TRAFFIC]
+            else None
+        ),
+        resource_factory=(
+            (lambda c, rid: [PangolinResourceHealth(c, rid)])
+            if options[OPT_PUBLIC] != LEVEL_OFF
+            else None
+        ),
     )
 
 

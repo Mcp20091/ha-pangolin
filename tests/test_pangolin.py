@@ -3,7 +3,7 @@ from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pangolin.const import CONF_ORG_ID, DOMAIN
+from custom_components.pangolin.const import ALL_FEATURES, CONF_ORG_ID, DOMAIN
 
 BASE = "https://api.example.com/v1"
 
@@ -49,8 +49,13 @@ async def test_flow_and_entities(hass, aioclient_mock):
         {CONF_URL: "https://api.example.com/", CONF_API_KEY: "id.secret",
          CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
     )
+    assert result["step_id"] == "features"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"features": ALL_FEATURES}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_URL] == BASE
+    assert result["options"] == {"features": ALL_FEATURES}
     await hass.async_block_till_done()
 
     assert hass.states.get("binary_sensor.pangolin_site_proxmox_online").state == "on"
@@ -106,10 +111,11 @@ async def test_pagination(hass, aioclient_mock):
     assert len(await client.list_resources()) == 150
 
 
-async def setup_entry(hass):
+async def setup_entry(hass, features=None):
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+        options={} if features is None else {"features": features},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -171,3 +177,74 @@ async def test_restart_not_supported(hass, aioclient_mock):
             "button", "press", {"entity_id": "button.pangolin_site_proxmox_restart"},
             blocking=True,
         )
+
+
+def suggested_features(result):
+    for key in result["data_schema"].schema:
+        if key == "features":
+            return key.description["suggested_value"]
+    raise AssertionError("no features field")
+
+
+async def test_feature_step_detects_access_and_bulk_actions(hass, aioclient_mock):
+    mock_api(aioclient_mock, private_status=403)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+    )
+    capable = ["public_status", "public_control", "site_restart", "site_traffic"]
+    assert result["step_id"] == "features"
+    assert suggested_features(result) == capable
+    assert "Private" in result["description_placeholders"]["unavailable"]
+
+    fid = result["flow_id"]
+    result = await hass.config_entries.flow.async_configure(
+        fid, {"features": capable, "bulk": "select_none"})
+    assert suggested_features(result) == []
+    result = await hass.config_entries.flow.async_configure(
+        fid, {"features": ["site_restart"], "bulk": "invert"})
+    assert suggested_features(result) == ["public_status", "public_control", "site_traffic"]
+    result = await hass.config_entries.flow.async_configure(
+        fid, {"features": [], "bulk": "select_all"})
+    assert suggested_features(result) == capable
+
+    # Features the key can't use aren't accepted by the form.
+    import pytest
+    from homeassistant.data_entry_flow import InvalidData
+
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            fid, {"features": ["public_status", "private_control"]})
+    result = await hass.config_entries.flow.async_configure(
+        fid, {"features": ["public_status"]})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {"features": ["public_status"]}
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.pangolin_home_assistant_enabled").state == "on"
+    assert hass.states.get("switch.pangolin_home_assistant_enabled") is None
+    assert hass.states.get("button.pangolin_site_proxmox_restart") is None
+    assert hass.states.get("sensor.pangolin_site_proxmox_data_in") is None
+
+
+async def test_options_flow_removes_disabled_entities(hass, aioclient_mock):
+    from homeassistant.helpers import entity_registry as er
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass)
+    reg = er.async_get(hass)
+    assert reg.async_get("switch.pangolin_nas_enabled")
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["step_id"] == "features"
+    assert suggested_features(result) == ALL_FEATURES
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"features": ["public_status", "public_control", "private_status"]}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+    assert reg.async_get("switch.pangolin_nas_enabled") is None
+    assert hass.states.get("binary_sensor.pangolin_nas_enabled").state == "on"
+    assert reg.async_get("button.pangolin_site_proxmox_restart") is None
+    assert hass.states.get("switch.pangolin_home_assistant_enabled").state == "on"

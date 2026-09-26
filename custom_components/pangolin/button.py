@@ -8,6 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import PangolinError, PangolinNotFoundError
+from .const import OPT_RESTART
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import PangolinSiteEntity, add_entities_dynamically
 
@@ -20,6 +21,8 @@ async def async_setup_entry(
     entry: PangolinConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    if not entry.runtime_data.options[OPT_RESTART]:
+        return
     add_entities_dynamically(
         entry,
         async_add_entities,

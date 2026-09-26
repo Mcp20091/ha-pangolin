@@ -17,11 +17,25 @@ from .api import (
     PangolinError,
     PangolinNotFoundError,
 )
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    ALL_FEATURES,
+    CONF_FEATURES,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    LEVEL_OFF,
+    OPT_PRIVATE,
+    OPT_PUBLIC,
+    resolve_features,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 type PangolinConfigEntry = ConfigEntry[PangolinCoordinator]
+
+
+def get_options(entry: ConfigEntry) -> dict[str, Any]:
+    """Resolved features; entries from before feature selection get everything."""
+    return resolve_features(entry.options.get(CONF_FEATURES, ALL_FEATURES))
 
 
 @dataclass
@@ -49,12 +63,17 @@ class PangolinCoordinator(DataUpdateCoordinator[PangolinData]):
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
         self.client = client
-        self._private_supported = True
+        self.options = get_options(entry)
+        self._private_supported = self.options[OPT_PRIVATE] != LEVEL_OFF
 
     async def _async_update_data(self) -> PangolinData:
         try:
             sites = await self.client.list_sites()
-            resources = await self.client.list_resources()
+            resources = (
+                await self.client.list_resources()
+                if self.options[OPT_PUBLIC] != LEVEL_OFF
+                else []
+            )
         except PangolinAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except PangolinError as err:

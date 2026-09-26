@@ -6,7 +6,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import PAGE_SIZE
+from .const import OPT_PRIVATE, OPT_PUBLIC, PAGE_SIZE
 
 
 class PangolinError(Exception):
@@ -108,6 +108,26 @@ class PangolinClient:
     async def get_org(self) -> dict[str, Any]:
         """Return the configured organization (used to validate setup)."""
         return await self._request("GET", f"/org/{self._org_id}")
+
+    async def probe_access(self) -> dict[str, bool]:
+        """Report which optional resource lists this key can read.
+
+        Org API keys cannot read their own permission list, so this asks for
+        one item from each endpoint instead. Nothing is changed on the server.
+        """
+        paths = {
+            OPT_PUBLIC: f"/org/{self._org_id}/resources",
+            OPT_PRIVATE: f"/org/{self._org_id}/private-resources",
+        }
+        access: dict[str, bool] = {}
+        for option, path in paths.items():
+            try:
+                await self._request("GET", path, params={"page": 1, "pageSize": 1})
+            except (PangolinAuthError, PangolinNotFoundError):
+                access[option] = False
+            else:
+                access[option] = True
+        return access
 
     async def list_sites(self) -> list[dict[str, Any]]:
         """Return all sites in the organization."""

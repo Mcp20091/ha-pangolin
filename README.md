@@ -54,3 +54,24 @@ Settings > Devices & services > Add integration > Pangolin, then enter
 - Integration API URL, for example `https://api.example.com/v1`
 - API key
 - Organization ID
+
+### Choosing features
+
+After the key is checked, you get a list of features to tick:
+
+| Feature | Adds |
+| --- | --- |
+| Public resources: status | Health sensor, plus a read-only Enabled sensor when switches are off |
+| Public resources: enable/disable switches | Enabled switch |
+| Private resources: status | Read-only Enabled sensor |
+| Private resources: enable/disable switches | Enabled switch |
+| Sites: restart buttons | Restart button per Newt site |
+| Sites: data in/out sensors | Data in / Data out diagnostic sensors |
+
+Site online sensors and the Sites online summary are always on.
+
+Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked. Write permissions (Update Resource, Update Site Resource, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
+
+The Bulk selection dropdown (Select all, Unselect all, Invert selection) redraws the list with the new ticks when you submit. Submit again without a bulk action to save.
+
+To change features later, go to the integration's page and choose Configure. Entities and devices for features you turn off are removed.

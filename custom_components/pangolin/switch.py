@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import PangolinError
+from .const import LEVEL_CONTROL, OPT_PRIVATE, OPT_PUBLIC
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
     PangolinPrivateResourceEntity,
@@ -24,11 +25,20 @@ async def async_setup_entry(
     entry: PangolinConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    options = entry.runtime_data.options
     add_entities_dynamically(
         entry,
         async_add_entities,
-        resource_factory=lambda c, rid: [PangolinResourceSwitch(c, rid)],
-        private_factory=lambda c, rid: [PangolinPrivateResourceSwitch(c, rid)],
+        resource_factory=(
+            (lambda c, rid: [PangolinResourceSwitch(c, rid)])
+            if options[OPT_PUBLIC] == LEVEL_CONTROL
+            else None
+        ),
+        private_factory=(
+            (lambda c, rid: [PangolinPrivateResourceSwitch(c, rid)])
+            if options[OPT_PRIVATE] == LEVEL_CONTROL
+            else None
+        ),
     )
 
 
