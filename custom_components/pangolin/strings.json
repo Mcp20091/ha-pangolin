@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Pangolin",
+        "description": "Uses the Pangolin Integration API. Self-hosted instances must have the Integration API enabled and reachable.",
+        "data": {
+          "url": "Integration API URL",
+          "api_key": "API key",
+          "org_id": "Organization ID",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "For example https://api.example.com/v1 (/v1 is added if missing)",
+          "api_key": "Organization API key with Get Organization, List Sites, List Resources and Update Resource permissions",
+          "org_id": "The organization ID shown in the Pangolin dashboard URL"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update Pangolin API key",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Pangolin Integration API.",
+      "invalid_auth": "The API key was rejected or lacks the required permissions.",
+      "unknown": "Unexpected response from Pangolin. Check the URL and organization ID."
+    },
+    "abort": {
+      "already_configured": "This Pangolin organization is already configured.",
+      "reauth_successful": "API key updated."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "site_online": { "name": "Online" }
+    },
+    "sensor": {
+      "resource_health": {
+        "name": "Health",
+        "state": {
+          "healthy": "Healthy",
+          "degraded": "Degraded",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
+      },
+      "data_in": { "name": "Data in" },
+      "data_out": { "name": "Data out" }
+    },
+    "switch": {
+      "resource_enabled": { "name": "Enabled" }
+    }
+  }
+}
