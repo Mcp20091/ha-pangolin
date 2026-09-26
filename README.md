@@ -6,13 +6,20 @@ Custom integration that connects Home Assistant to the [Pangolin](https://github
 
 ## Entities
 
+Your organization gets a hub device with
+- Sites online (sensor): number of online sites, with every site's name, online state, status (pending or approved), type and address in the `sites` attribute
+
 Each Pangolin site becomes a device with
 - Online (binary sensor, connectivity)
+- Restart (button) that restarts the site's Newt tunnel (Newt sites only)
 - Data in / Data out (diagnostic sensors, MB)
 
-Each Pangolin resource becomes a device with
+Each public resource becomes a device with
 - Enabled (switch) that enables or disables the resource in Pangolin
 - Health (sensor) with the values healthy, degraded, offline, unknown
+
+Each private resource becomes a device with
+- Enabled (switch) that enables or disables the private resource, with its mode, destination, alias and sites as attributes
 
 New sites and resources are picked up automatically. Data refreshes every 30 seconds.
 
@@ -22,8 +29,14 @@ New sites and resources are picked up automatically. Data refreshes every 30 sec
 2. In the Pangolin dashboard, create an organization API key with these permissions
    - Get Organization
    - List Sites
+   - Restart Site (for the restart buttons)
    - List Resources
    - Update Resource
+   - List Site Resources and Update Site Resource (for private resources; optional)
+
+Private resources are optional. If the key can't list them, or your Pangolin version doesn't have the private resources endpoint, the integration skips them and logs a warning. Grant the permission and reload the integration to add them later.
+
+Site restart is part of the Integration API spec, but some Pangolin versions only allow it from the dashboard. If so, pressing Restart shows an error saying it isn't supported.
 
 ## Install
 

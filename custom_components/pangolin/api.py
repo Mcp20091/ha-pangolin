@@ -21,6 +21,10 @@ class PangolinConnectionError(PangolinError):
     """Raised when the API cannot be reached."""
 
 
+class PangolinNotFoundError(PangolinError):
+    """Raised when an endpoint or object does not exist (404)."""
+
+
 def normalize_url(url: str) -> str:
     """Return the Integration API base URL ending in /v1."""
     url = url.strip().rstrip("/")
@@ -67,6 +71,8 @@ class PangolinClient:
                     raise PangolinAuthError(
                         f"API key rejected ({resp.status}) for {path}"
                     )
+                if resp.status == 404:
+                    raise PangolinNotFoundError(f"{path} not found (404)")
                 try:
                     body = await resp.json(content_type=None)
                 except ValueError as err:
@@ -110,6 +116,24 @@ class PangolinClient:
     async def list_resources(self) -> list[dict[str, Any]]:
         """Return all public resources in the organization."""
         return await self._get_all(f"/org/{self._org_id}/resources", "resources")
+
+    async def list_private_resources(self) -> list[dict[str, Any]]:
+        """Return all private (site) resources in the organization."""
+        return await self._get_all(
+            f"/org/{self._org_id}/private-resources", "siteResources"
+        )
+
+    async def set_private_resource_enabled(
+        self, site_resource_id: int, enabled: bool
+    ) -> None:
+        """Enable or disable a private resource."""
+        await self._request(
+            "POST", f"/private-resource/{site_resource_id}", json={"enabled": enabled}
+        )
+
+    async def restart_site(self, site_id: int) -> None:
+        """Ask a site's Newt connector to restart its tunnel."""
+        await self._request("POST", f"/site/{site_id}/restart")
 
     async def set_resource_enabled(self, resource_id: int, enabled: bool) -> None:
         """Enable or disable a resource."""

@@ -12,7 +12,7 @@
         },
         "data_description": {
           "url": "Base URL of your Pangolin Integration API. /v1 is added if missing.",
-          "api_key": "Organization API key with Get Organization, List Sites, List Resources and Update Resource permissions",
+          "api_key": "Organization API key with Get Organization, List Sites, Restart Site, List Resources, Update Resource, List Site Resources and Update Site Resource permissions",
           "org_id": "The organization ID shown in the Pangolin dashboard URL"
         }
       },
@@ -35,7 +35,9 @@
   },
   "entity": {
     "binary_sensor": {
-      "site_online": { "name": "Online" }
+      "site_online": {
+        "name": "Online"
+      }
     },
     "sensor": {
       "resource_health": {
@@ -47,11 +49,20 @@
           "unknown": "Unknown"
         }
       },
-      "data_in": { "name": "Data in" },
-      "data_out": { "name": "Data out" }
+      "data_in": {
+        "name": "Data in"
+      },
+      "data_out": {
+        "name": "Data out"
+      },
+      "sites_online": {
+        "name": "Sites online"
+      }
     },
     "switch": {
-      "resource_enabled": { "name": "Enabled" }
+      "resource_enabled": {
+        "name": "Enabled"
+      }
     }
   }
 }

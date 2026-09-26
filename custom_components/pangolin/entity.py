@@ -9,8 +9,25 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_ORG_ID, DOMAIN
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
+
+
+class PangolinOrgEntity(CoordinatorEntity[PangolinCoordinator]):
+    """Entity tied to the Pangolin organization as a whole."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: PangolinCoordinator, key: str) -> None:
+        super().__init__(coordinator)
+        entry = coordinator.config_entry
+        self._attr_unique_id = f"{entry.entry_id}_org_{key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_org")},
+            name=f"Pangolin {entry.data[CONF_ORG_ID]}",
+            manufacturer="Pangolin",
+            model="Organization",
+        )
 
 
 class PangolinSiteEntity(CoordinatorEntity[PangolinCoordinator]):
@@ -74,16 +91,50 @@ class PangolinResourceEntity(CoordinatorEntity[PangolinCoordinator]):
         )
 
 
+class PangolinPrivateResourceEntity(CoordinatorEntity[PangolinCoordinator]):
+    """Entity tied to a Pangolin private (site) resource."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self, coordinator: PangolinCoordinator, site_resource_id: int, key: str
+    ) -> None:
+        super().__init__(coordinator)
+        self.site_resource_id = site_resource_id
+        entry_id = coordinator.config_entry.entry_id
+        self._attr_unique_id = f"{entry_id}_private_{site_resource_id}_{key}"
+        res = self.resource
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry_id}_private_{site_resource_id}")},
+            name=f"Pangolin {res.get('name', site_resource_id)}",
+            manufacturer="Pangolin",
+            model=f"Private resource ({res.get('mode') or 'unknown'})",
+        )
+
+    @property
+    def resource(self) -> dict[str, Any]:
+        return self.coordinator.data.private_resources.get(self.site_resource_id, {})
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.site_resource_id in self.coordinator.data.private_resources
+        )
+
+
 def add_entities_dynamically(
     entry: PangolinConfigEntry,
     async_add_entities: Callable[[Iterable[Entity]], None],
     site_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
     resource_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
+    private_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
 ) -> None:
     """Add entities now and whenever new sites or resources appear."""
     coordinator = entry.runtime_data
     known_sites: set[int] = set()
     known_resources: set[int] = set()
+    known_private: set[int] = set()
 
     def _check() -> None:
         new: list[Entity] = []
@@ -95,6 +146,10 @@ def add_entities_dynamically(
             for res_id in coordinator.data.resources.keys() - known_resources:
                 known_resources.add(res_id)
                 new.extend(resource_factory(coordinator, res_id))
+        if private_factory:
+            for res_id in coordinator.data.private_resources.keys() - known_private:
+                known_private.add(res_id)
+                new.extend(private_factory(coordinator, res_id))
         if new:
             async_add_entities(new)
 

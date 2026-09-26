@@ -10,7 +10,12 @@ from .api import PangolinClient
 from .const import CONF_ORG_ID
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PangolinConfigEntry) -> bool:

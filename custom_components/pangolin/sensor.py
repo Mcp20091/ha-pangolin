@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -12,7 +14,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
-from .entity import PangolinResourceEntity, PangolinSiteEntity, add_entities_dynamically
+from .entity import (
+    PangolinOrgEntity,
+    PangolinResourceEntity,
+    PangolinSiteEntity,
+    add_entities_dynamically,
+)
 
 HEALTH_OPTIONS = ["healthy", "degraded", "offline", "unknown"]
 # Older Pangolin builds reported fully-down resources as "unhealthy".
@@ -24,6 +31,7 @@ async def async_setup_entry(
     entry: PangolinConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    async_add_entities([PangolinSitesOnline(entry.runtime_data)])
     add_entities_dynamically(
         entry,
         async_add_entities,
@@ -72,3 +80,37 @@ class PangolinSiteTraffic(PangolinSiteEntity, SensorEntity):
     def native_value(self) -> float | None:
         value = self.site.get(self._field)
         return None if value is None else float(value)
+
+
+class PangolinSitesOnline(PangolinOrgEntity, SensorEntity):
+    """How many sites are online, with every site listed in the attributes."""
+
+    _attr_translation_key = "sites_online"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: PangolinCoordinator) -> None:
+        super().__init__(coordinator, "sites_online")
+
+    @property
+    def native_value(self) -> int:
+        return sum(1 for s in self.coordinator.data.sites.values() if s.get("online"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        sites = sorted(
+            self.coordinator.data.sites.values(),
+            key=lambda s: str(s.get("name", "")).lower(),
+        )
+        return {
+            "total": len(sites),
+            "sites": [
+                {
+                    "name": s.get("name"),
+                    "online": bool(s.get("online")),
+                    "status": s.get("status"),
+                    "type": s.get("type"),
+                    "address": s.get("address"),
+                }
+                for s in sites
+            ],
+        }

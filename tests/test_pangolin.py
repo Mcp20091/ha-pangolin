@@ -12,7 +12,7 @@ def ok(data):
     return {"data": data, "success": True, "error": False, "message": "", "status": 200}
 
 
-def mock_api(aioclient_mock, enabled=True, health="healthy"):
+def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200):
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{BASE}/org/home", json=ok({"org": {"orgId": "home"}}))
     aioclient_mock.get(
@@ -28,7 +28,17 @@ def mock_api(aioclient_mock, enabled=True, health="healthy"):
                                 "fullDomain": "ha.example.com", "mode": "http"}],
                  "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
     )
+    aioclient_mock.get(
+        f"{BASE}/org/home/private-resources",
+        status=private_status,
+        json=ok({"siteResources": [{"siteResourceId": 3, "name": "NAS", "niceId": "nas",
+                                    "mode": "host", "destination": "10.0.0.5",
+                                    "enabled": True, "siteNames": ["Proxmox"]}],
+                 "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
+    )
     aioclient_mock.post(f"{BASE}/resource/7", json=ok({"resourceId": 7}))
+    aioclient_mock.post(f"{BASE}/private-resource/3", json=ok({"siteResourceId": 3}))
+    aioclient_mock.post(f"{BASE}/site/1/restart", json=ok(None))
 
 
 async def test_flow_and_entities(hass, aioclient_mock):
@@ -94,3 +104,70 @@ async def test_pagination(hass, aioclient_mock):
     aioclient_mock.get(f"{BASE}/org/home/resources", params={"page": 2, "pageSize": 100}, json=page2)
     client = PangolinClient(async_get_clientsession(hass), BASE, "k", "home")
     assert len(await client.list_resources()) == 150
+
+
+async def setup_entry(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_private_resource_switch(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    sw = hass.states.get("switch.pangolin_nas_enabled")
+    assert sw.state == "on"
+    assert sw.attributes["destination"] == "10.0.0.5"
+    assert sw.attributes["sites"] == ["Proxmox"]
+
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.pangolin_nas_enabled"}, blocking=True
+    )
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert str(posts[-1][1]).endswith("/private-resource/3")
+    assert posts[-1][2] == {"enabled": False}
+
+
+async def test_private_resources_optional(hass, aioclient_mock):
+    mock_api(aioclient_mock, private_status=403)
+    entry = await setup_entry(hass)
+    assert entry.state.name == "LOADED"
+    assert hass.states.get("switch.pangolin_home_assistant_enabled").state == "on"
+    assert hass.states.get("switch.pangolin_nas_enabled") is None
+
+
+async def test_restart_button_and_sites_list(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+
+    online = hass.states.get("sensor.pangolin_home_sites_online")
+    assert online.state == "1"
+    assert online.attributes["total"] == 1
+    assert online.attributes["sites"][0]["name"] == "Proxmox"
+    assert online.attributes["sites"][0]["online"] is True
+
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.pangolin_site_proxmox_restart"}, blocking=True
+    )
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert str(posts[-1][1]).endswith("/site/1/restart")
+
+
+async def test_restart_not_supported(hass, aioclient_mock):
+    import pytest
+    from homeassistant.exceptions import HomeAssistantError
+
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(f"{BASE}/site/1/restart", status=404, json={"error": True})
+    with pytest.raises(HomeAssistantError, match="does not expose site restart"):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.pangolin_site_proxmox_restart"},
+            blocking=True,
+        )
