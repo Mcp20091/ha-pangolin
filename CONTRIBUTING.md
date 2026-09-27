@@ -62,7 +62,7 @@ ruff check
 
 [AGENTS.md](AGENTS.md) has the details worth knowing before changing anything: API quirks, naming rules, and what hassfest rejects.
 
-To enable and reach the API, follow Pangolin's [Integration API guide](https://docs.pangolin.net/self-host/advanced/integration-api). Pangolin's OpenAPI spec doesn't describe response fields. To see exactly what your server returns, run `python scripts/api_fields.py > api-fields.json`, or `.\scriptspi_fields.ps1 > api-fields.json` in PowerShell (5.1 or 7, no Python needed). It prints field names and types only, never values, so the output is safe to share. Your Pangolin server documents its own API at `https://<your-api-host>/v1/docs`, with the raw spec at `/v1/openapi.json`. Pangolin's source ([fosrl/pangolin](https://github.com/fosrl/pangolin)) is the final word on which permission each endpoint needs.
+To enable and reach the API, follow Pangolin's [Integration API guide](https://docs.pangolin.net/self-host/advanced/integration-api). Pangolin's OpenAPI spec doesn't describe response fields. To see exactly what your server returns, run `python scripts/api_fields.py > api-fields.json`, or `.\scripts\api_fields.ps1 > api-fields.json` in PowerShell (5.1 or 7, no Python needed). It prints field names and types only, never values, so the output is safe to share. Your Pangolin server documents its own API at `https://<your-api-host>/v1/docs`, with the raw spec at `/v1/openapi.json`. Pangolin's source ([fosrl/pangolin](https://github.com/fosrl/pangolin)) is the final word on which permission each endpoint needs.
 
 ## Releases
 
