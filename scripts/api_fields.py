@@ -5,19 +5,21 @@ each response's structure: field names and value types only. No domains,
 addresses, emails, keys or names are printed, so the output is safe to share
 in an issue or with a contributor.
 
-Usage (Python 3.10+, no extra packages):
+Usage (Python 3.10+, no extra packages): double-click it, or run
 
-    python scripts/api_fields.py > api-fields.json
+    python scripts/api_fields.py
 
 It asks for the Integration API address, organization ID and API key (the key
-isn't echoed or saved). Endpoints the key can't read are reported as errors
-and skipped.
+isn't echoed or saved), then saves the result as api-fields.json next to this
+script and waits for Enter before closing. Endpoints the key can't read are
+reported as errors and skipped.
 """
 
 from __future__ import annotations
 
 import getpass
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -64,6 +66,9 @@ def merge(a: Any, b: Any) -> Any:
 class Api:
     def __init__(self, base: str, key: str, verify: bool) -> None:
         base = base.strip().rstrip("/")
+        # The prompt already shows https://, so a bare host means https.
+        if "://" not in base:
+            base = "https://" + base
         if not base.endswith("/v1"):
             base += "/v1"
         if urllib.parse.urlparse(base).scheme not in ("http", "https"):
@@ -88,7 +93,7 @@ def ask(prompt: str) -> str:
 
 
 def main() -> None:
-    base = ask("Integration API address (e.g. https://api.example.com): ")
+    base = ask("Integration API address (e.g. api.example.com): https://")
     org = ask("Organization ID: ").strip()
     key = getpass.getpass("API key (not shown): ", stream=sys.stderr).strip()
     verify = ask("Verify SSL certificate? [Y/n]: ").strip().lower() != "n"
@@ -138,8 +143,18 @@ def main() -> None:
             first = items[0].get("resourceId")
             fetch("GET /resource/{id}/targets", f"/resource/{first}/targets")
 
-    print(json.dumps(report, indent=2))
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api-fields.json")
+    with open(out, "w", encoding="utf-8") as file:
+        json.dump(report, file, indent=2)
+    print(f"\nSaved to {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, EOFError):
+        pass
+    except Exception as err:  # noqa: BLE001 - show any failure before the window closes
+        print(f"\nSomething went wrong: {err}", file=sys.stderr)
+    # Double-clicked scripts get their own window; keep it open to read.
+    ask("\nPress Enter to close.")

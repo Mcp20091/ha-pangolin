@@ -10,3 +10,5 @@ venv/
 *.key
 secrets.yaml
 *.log
+# Output of scripts/api_fields.*
+scripts/api-fields.json

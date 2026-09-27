@@ -12,8 +12,12 @@
     for without being shown (or read from $env:PANGOLIN_API_KEY) and is never
     saved. Endpoints the key can't read are reported as errors and skipped.
 
+    The result is saved as api-fields.json next to this script, and the
+    window waits for Enter before closing, so it also works when started
+    with right-click > Run with PowerShell.
+
 .EXAMPLE
-    .\scripts\api_fields.ps1 > api-fields.json
+    .\scripts\api_fields.ps1
 #>
 param(
     [string]$Url,
@@ -71,7 +75,12 @@ function Merge-Shape($A, $B) {
     return (($types | Sort-Object -Unique) -join ' | ')
 }
 
-if (-not $Url) { $Url = Read-Host 'Integration API address (e.g. https://api.example.com)' }
+try {
+if (-not $Url) {
+    # Read-Host would add ": " after the prompt, so print it ourselves.
+    Write-Host -NoNewline 'Integration API address (e.g. api.example.com): https://'
+    $Url = Read-Host
+}
 if (-not $OrgId) { $OrgId = Read-Host 'Organization ID' }
 $OrgId = $OrgId.Trim()
 $apiKey = $env:PANGOLIN_API_KEY
@@ -84,6 +93,8 @@ if (-not $apiKey) {
 $apiKey = $apiKey.Trim()
 
 $base = $Url.Trim().TrimEnd('/')
+# The prompt already shows https://, so a bare host means https.
+if ($base -notmatch '://') { $base = 'https://' + $base }
 if (-not $base.EndsWith('/v1')) { $base += '/v1' }
 if ($base -notmatch '^https?://') { throw 'The address must start with http:// or https://' }
 if ($SkipCertificateCheck -and $PSVersionTable.PSVersion.Major -lt 6) {
@@ -156,4 +167,12 @@ foreach ($list in $lists) {
     }
 }
 
-$report | ConvertTo-Json -Depth 30
+$outFile = Join-Path $PSScriptRoot 'api-fields.json'
+$report | ConvertTo-Json -Depth 30 | Set-Content -Path $outFile -Encoding UTF8
+Write-Host "`nSaved to $outFile"
+}
+catch {
+    Write-Host "`nSomething went wrong: $($_.Exception.Message)" -ForegroundColor Red
+}
+# Started from Explorer, the window closes as soon as the script ends.
+$null = Read-Host "`nPress Enter to close"
