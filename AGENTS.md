@@ -67,6 +67,15 @@ It's unofficial, and it was written with Claude. Keep the README's "Built with C
 - Private resources and clients are optional at runtime. A 403 or 404 on the list turns them off for that session with a warning, instead of breaking setup or forcing re-authentication.
 - **Never store the root key** entered in the permission check. It stays on the flow instance only. A test asserts this.
 
+## Staying current with Home Assistant
+
+Home Assistant deprecates and removes developer APIs regularly, and this integration has to keep up.
+
+- **Before changing code**, skim recent posts on the [Home Assistant developer blog](https://developers.home-assistant.io/blog). Every deprecation and breaking change for integrations is announced there, with the version it takes effect in. It's far easier to follow than core's commit history. For a specific helper, check its current source in `home-assistant/core` rather than relying on memory.
+- **Run the tests against the latest release.** `requirements_test.txt` is unpinned, so CI installs the newest `pytest-homeassistant-custom-component` and Home Assistant on every run. Deprecated calls often fail there as errors (for example, `device_registry.async_get_device` raises in 2026.x). Treat deprecation warnings in test output as work to do, not noise.
+- Keep `hacs.json`'s minimum `homeassistant` version honest if you start relying on newer features.
+- If you find a deprecation that affects this code, fix it and note it here.
+
 ## Validation gotchas (hassfest)
 
 - UI strings may not contain URLs or anything that looks like HTML (`<id>` fails). Use placeholders or plain words.
