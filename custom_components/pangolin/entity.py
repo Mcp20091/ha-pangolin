@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -77,6 +77,7 @@ class PangolinResourceEntity(CoordinatorEntity[PangolinCoordinator]):
             name=f"Pangolin {res.get('name', resource_id)}",
             manufacturer="Pangolin",
             model=f"Resource ({res.get('mode') or 'http'})",
+            entry_type=DeviceEntryType.SERVICE,
             configuration_url=f"https://{domain}" if domain else None,
         )
 
@@ -109,6 +110,7 @@ class PangolinPrivateResourceEntity(CoordinatorEntity[PangolinCoordinator]):
             name=f"Pangolin {res.get('name', site_resource_id)}",
             manufacturer="Pangolin",
             model=f"Private resource ({res.get('mode') or 'unknown'})",
+            entry_type=DeviceEntryType.SERVICE,
         )
 
     @property

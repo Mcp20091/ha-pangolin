@@ -55,6 +55,7 @@ It's unofficial, and it was written with Claude. Keep the README's "Built with C
 - `ConfigEntry.runtime_data` holds the coordinator. Entities use `has_entity_name` and `translation_key`, with names in `strings.json` and icons in `icons.json`.
 - **Unique IDs:** `{entry_id}_org_{key}`, `{entry_id}_site_{siteId}_{key}`, `{entry_id}_resource_{resourceId}_{key}`, `{entry_id}_private_{siteResourceId}_{key}`. Device identifiers follow the same pattern without `_{key}`. **`_remove_disabled_features()` matches on `_resource_`, `_private_` and the `_data_in`/`_data_out` suffixes**, so update it if you change these formats. Changing unique IDs orphans users' entities.
 - **Options** are stored as `{"features": [...]}`. A missing key means every feature is on, which keeps entries from before feature selection working. `resolve_features()` turns the list into per-area levels (`off`/`status`/`control`). Control implies status: a switch replaces the read-only "Enabled" binary sensor.
+- Public and private resource devices use `entry_type=DeviceEntryType.SERVICE`, so the device list shows them with Home Assistant's service icon. Sites and the org stay normal devices. That icon is the only per-device visual an integration can influence.
 - Private resources are optional at runtime. A 403 or 404 on the list turns them off for that session with a warning, instead of breaking setup or forcing re-authentication.
 - **Never store the root key** entered in the permission check. It stays on the flow instance only. A test asserts this.
 

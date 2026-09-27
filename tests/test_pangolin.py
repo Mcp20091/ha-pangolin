@@ -396,3 +396,19 @@ async def test_permissions_replaces_root_key_in_use(hass, aioclient_mock):
     assert posts[-1][2] == {"actionIds": ["getOrg", "listSites", "listResources"]}
     await hass.async_block_till_done()
     assert entry.data[CONF_API_KEY] == "new1.fresh"
+
+
+async def test_resources_are_service_devices(hass, aioclient_mock):
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    ent_reg, dev_reg = er.async_get(hass), dr.async_get(hass)
+
+    def device_of(entity_id):
+        return dev_reg.async_get(ent_reg.async_get(entity_id).device_id)
+
+    service = dr.DeviceEntryType.SERVICE
+    assert device_of("switch.pangolin_home_assistant_enabled").entry_type is service
+    assert device_of("switch.pangolin_nas_enabled").entry_type is service
+    assert device_of("binary_sensor.pangolin_site_proxmox_online").entry_type is None
