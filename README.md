@@ -152,9 +152,6 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 **Entities are unavailable**
 - Home Assistant can't reach Pangolin right now (see the first item), or the site or resource was deleted in Pangolin.
 
-**The logo or entity icons didn't change after an update**
-- Your browser is showing cached copies. Do a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R on a Mac) or clear site data for your Home Assistant address. Device rows in the device list always use Home Assistant's generic device icon; the integration's icons appear on entities and cards.
-
 **Getting more detail**
 - On the integration's page, open the menu and choose **Enable debug logging**, reproduce the problem, then disable it to download the log.
 - When [opening an issue](https://github.com/Mcp20091/ha-pangolin/issues), include your Home Assistant and Pangolin versions and the relevant log lines. **Remove API keys and your domain names first.**
