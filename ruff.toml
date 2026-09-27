@@ -1,0 +1,9 @@
+target-version = "py313"
+
+[lint]
+# F: real errors, E9: syntax, B: likely bugs, S: security (the Bandit rules).
+select = ["E9", "F", "B", "S"]
+
+[lint.per-file-ignores]
+# Tests assert on purpose and use obviously fake keys like "k1.secret".
+"tests/**" = ["S101", "S105", "S106"]

@@ -128,5 +128,5 @@ async def async_create_fix_flow(
     hass: HomeAssistant, issue_id: str, data: dict[str, Any] | None
 ) -> RepairsFlow:
     """Create the flow behind the notice's Fix button."""
-    assert data is not None
-    return NewFeaturesFlow(str(data["entry_id"]))
+    # A missing entry ID just makes the flow abort as "entry removed".
+    return NewFeaturesFlow(str((data or {}).get("entry_id", "")))

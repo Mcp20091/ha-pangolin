@@ -197,6 +197,10 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 
 Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the tools you need, how to run the tests and how CI checks changes. [AGENTS.md](AGENTS.md) collects what's worth knowing about the Pangolin API and this codebase before you change it, for people and AI coding agents alike.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) to report a vulnerability privately, and for what the repo does to keep secrets out.
+
 ## Credits
 
 - **[Pangolin](https://github.com/fosrl/pangolin)** by the Fossorial team and its contributors: the self-hosted tunneled reverse proxy this integration talks to, its [Integration API](https://docs.pangolin.net/self-host/advanced/integration-api), and its documentation. The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to. Please support the project upstream.

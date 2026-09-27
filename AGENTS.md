@@ -80,6 +80,14 @@ Home Assistant deprecates and removes developer APIs regularly, and this integra
 - Keep `hacs.json`'s minimum `homeassistant` version honest if you start relying on newer features.
 - If you find a deprecation that affects this code, fix it and note it here.
 
+## Security rules
+
+- **Never commit real secrets or identifying details**: API keys, domains, hostnames, org IDs, IPs or usernames, in code, tests, docs or commit messages. Tests use `example.com` and fake keys.
+- Secret scanning runs in CI (`.github/workflows/security.yml`, TruffleHog) and GitHub push protection is on. Don't disable either to get a push through. Rotate and remove the secret instead.
+- `ruff check` (config in `ruff.toml`) runs the Bandit security rules. Don't use `assert` for checks in integration code, because Python strips asserts in optimized mode. Raise an error instead.
+- Any new field that could identify a user goes in `diagnostics.TO_REDACT`.
+- Actions in workflows are pinned to commit SHAs with the version in a comment. Dependabot updates them. Keep new actions pinned the same way, and keep workflow `permissions` at `contents: read` unless a job needs more.
+
 ## Validation gotchas (hassfest)
 
 - UI strings may not contain URLs or anything that looks like HTML (`<id>` fails). Use placeholders or plain words.

@@ -559,17 +559,20 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
         return await self.async_step_permissions_result(user_input)
 
     async def _apply(self) -> None:
-        assert self._admin is not None
+        if self._admin is None:
+            raise PangolinError("No key available to make the change")
         data = self.config_entry.data
         if self._mode == "compare":
             key_id = key_id_of(data[CONF_API_KEY])
-            assert key_id is not None
+            if key_id is None:
+                raise PangolinError("The integration's key has no ID part")
             await self._admin.set_key_actions(key_id, self._required)
             return
         # root_in_use: make a least-privilege org key and switch to it.
         new_key = await self._admin.create_org_key(NEW_KEY_NAME)
         new_id = key_id_of(new_key)
-        assert new_id is not None
+        if new_id is None:
+            raise PangolinError("Pangolin returned a key without an ID")
         await self._admin.set_key_actions(new_id, self._required)
         await _client(self.hass, {**data, CONF_API_KEY: new_key}).get_org()
         self.hass.config_entries.async_update_entry(

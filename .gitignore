@@ -3,3 +3,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+# Never commit credentials or local HA config
+.env
+.env.*
+*.pem
+*.key
+secrets.yaml
+*.log

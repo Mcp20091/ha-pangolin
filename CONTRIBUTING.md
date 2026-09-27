@@ -39,6 +39,17 @@ pytest -q
 
 Please add or update tests with any behavior change and make sure CI passes.
 
+## Security checks
+
+The **Security** workflow runs a TruffleHog secret scan and Ruff's security lint on every push and pull request. To run the lint yourself:
+
+```bash
+pip install ruff
+ruff check
+```
+
+**Never commit real API keys, domains or hostnames**, including in tests, fixtures or screenshots. Tests use `example.com` and fake keys like `k1.secret`. See [SECURITY.md](SECURITY.md) for how to report a vulnerability privately.
+
 ## Working on the code
 
 - `custom_components/pangolin/api.py`: the API client
