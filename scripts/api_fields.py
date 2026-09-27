@@ -53,6 +53,11 @@ def merge(a: Any, b: Any) -> Any:
         return b
     if b is None:  # field missing from this item: keep what we know
         return a
+    # Empty on some items, filled on others: keep the filled structure.
+    if a == "null" and isinstance(b, (dict, list)):
+        return b
+    if b == "null" and isinstance(a, (dict, list)):
+        return a
     if isinstance(a, dict) and isinstance(b, dict):
         return {k: merge(a.get(k), b.get(k)) for k in sorted(a.keys() | b.keys())}
     if isinstance(a, list) and isinstance(b, list):

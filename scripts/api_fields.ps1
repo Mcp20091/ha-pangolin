@@ -57,6 +57,9 @@ function Merge-Shape($A, $B) {
     # The leading comma stops PowerShell unwrapping one-item arrays.
     if ($null -eq $A) { return , $B }
     if ($null -eq $B) { return , $A }
+    # Empty on some items, filled on others: keep the filled structure.
+    if ($A -is [string] -and $A -eq 'null' -and ($B -is [System.Collections.IDictionary] -or $B -is [array])) { return , $B }
+    if ($B -is [string] -and $B -eq 'null' -and ($A -is [System.Collections.IDictionary] -or $A -is [array])) { return , $A }
     if ($A -is [System.Collections.IDictionary] -and $B -is [System.Collections.IDictionary]) {
         $merged = [ordered]@{}
         foreach ($key in (@($A.Keys) + @($B.Keys) | Sort-Object -Unique)) {
