@@ -21,6 +21,7 @@ from .entity import (
     PangolinResourceEntity,
     PangolinSiteEntity,
     add_entities_dynamically,
+    private_resource_attributes,
 )
 
 
@@ -77,6 +78,10 @@ class PangolinSiteOnline(PangolinSiteEntity, BinarySensorEntity):
             "type": site.get("type"),
             "address": site.get("address"),
             "status": site.get("status"),
+            "newt_version": site.get("newtVersion"),
+            "agent_version": site.get("agentVersion"),
+            "exit_node": site.get("exitNodeName"),
+            "resource_count": site.get("resourceCount"),
         }
 
 
@@ -103,6 +108,10 @@ class PangolinPrivateResourceEnabled(PangolinPrivateResourceEntity, _ReadOnlyEna
     """Read-only enabled state of a private resource."""
 
     _attr_translation_key = "private_resource_enabled"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return private_resource_attributes(self.resource, self.site_resource_id)
 
     def __init__(self, coordinator: PangolinCoordinator, site_resource_id: int) -> None:
         super().__init__(coordinator, site_resource_id, "enabled")
@@ -151,6 +160,11 @@ class PangolinClientOnline(PangolinClientEntity, BinarySensorEntity):
             "user": client.get("username"),
             "version": client.get("olmVersion"),
             "device_model": client.get("deviceModel"),
+            "platform": client.get("fingerprintPlatform"),
+            "os_version": client.get("fingerprintOsVersion"),
+            "arch": client.get("fingerprintArch"),
+            "agent": client.get("agent"),
+            "user_type": client.get("userType"),
             "blocked": client.get("blocked"),
             "archived": client.get("archived"),
             "approval_state": client.get("approvalState"),

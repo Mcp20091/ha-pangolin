@@ -79,6 +79,24 @@
         "state": {
           "on": "mdi:archive"
         }
+      },
+      "resource_sso": {
+        "default": "mdi:shield-off-outline",
+        "state": {
+          "on": "mdi:shield-account"
+        }
+      },
+      "resource_block_access": {
+        "default": "mdi:web-check",
+        "state": {
+          "on": "mdi:cancel"
+        }
+      },
+      "resource_maintenance": {
+        "default": "mdi:wrench-outline",
+        "state": {
+          "on": "mdi:wrench"
+        }
       }
     },
     "button": {

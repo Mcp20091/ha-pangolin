@@ -28,6 +28,7 @@ from .entity import (
     PangolinResourceEntity,
     PangolinSiteEntity,
     add_entities_dynamically,
+    public_resource_details,
 )
 
 HEALTH_OPTIONS = ["healthy", "degraded", "offline", "unknown"]
@@ -89,6 +90,11 @@ class PangolinResourceHealth(PangolinResourceEntity, SensorEntity):
 
     def __init__(self, coordinator: PangolinCoordinator, resource_id: int) -> None:
         super().__init__(coordinator, resource_id, "health")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        # Per-target health shows which backend is down, not just that one is.
+        return public_resource_details(self.resource)
 
     @property
     def native_value(self) -> str | None:

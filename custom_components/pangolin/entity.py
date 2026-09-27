@@ -215,3 +215,57 @@ async def run_action(action: Awaitable[None], failure: str, permission: str) -> 
         raise HomeAssistantError(f"{failure}: {err}") from err
     except PangolinError as err:
         raise HomeAssistantError(f"{failure}: {err}") from err
+
+
+def _sites(names: Any, onlines: Any) -> list[dict[str, Any]]:
+    names = names or []
+    onlines = onlines or []
+    return [
+        {"name": name, "online": onlines[i] if i < len(onlines) else None}
+        for i, name in enumerate(names)
+    ]
+
+
+def public_resource_details(res: dict[str, Any]) -> dict[str, Any]:
+    """Targets, sites and protection of a public resource, from the list data."""
+    return {
+        "mode": res.get("mode"),
+        "ssl": res.get("ssl"),
+        "sites": [
+            {"name": s.get("siteName"), "online": s.get("online")}
+            for s in res.get("sites") or []
+        ],
+        "targets": [
+            {
+                "site": t.get("siteName"),
+                "target": f"{t.get('ip')}:{t.get('port')}",
+                "enabled": t.get("enabled"),
+                "health_check": t.get("hcEnabled"),
+                "health": t.get("healthStatus"),
+            }
+            for t in res.get("targets") or []
+        ],
+        "protection": {
+            "sso": bool(res.get("sso")),
+            "password": res.get("passwordId") is not None,
+            "pin": res.get("pincodeId") is not None,
+            "email_whitelist": bool(res.get("whitelist")),
+            "header_auth": res.get("headerAuthId") is not None,
+        },
+    }
+
+
+def private_resource_attributes(res: dict[str, Any], site_resource_id: int) -> dict[str, Any]:
+    """What a private resource points at and which sites carry it."""
+    return {
+        "site_resource_id": site_resource_id,
+        "nice_id": res.get("niceId"),
+        "mode": res.get("mode"),
+        "destination": res.get("destination"),
+        "alias": res.get("alias"),
+        "alias_address": res.get("aliasAddress"),
+        "tcp_ports": res.get("tcpPortRangeString"),
+        "udp_ports": res.get("udpPortRangeString"),
+        "icmp": None if res.get("disableIcmp") is None else not res.get("disableIcmp"),
+        "sites": _sites(res.get("siteNames"), res.get("siteOnlines")),
+    }

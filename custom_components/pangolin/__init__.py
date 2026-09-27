@@ -26,6 +26,9 @@ from .const import (
     OPT_CLIENTS,
     OPT_PRIVATE,
     OPT_PUBLIC,
+    OPT_PUBLIC_BLOCK,
+    OPT_PUBLIC_MAINTENANCE,
+    OPT_PUBLIC_SSO,
     OPT_RESET_BANDWIDTH,
     OPT_RESTART,
     OPT_TRAFFIC,
@@ -138,7 +141,14 @@ def _remove_disabled_features(hass: HomeAssistant, entry: PangolinConfigEntry) -
             else:
                 wanted = options[OPT_CLIENTS] != LEVEL_OFF
         elif "_resource_" in uid:
-            wanted = _resource_entity_wanted(options[OPT_PUBLIC], ent.domain)
+            if uid.endswith("_sso"):
+                wanted = options[OPT_PUBLIC_SSO]
+            elif uid.endswith("_block_access"):
+                wanted = options[OPT_PUBLIC_BLOCK]
+            elif uid.endswith("_maintenance"):
+                wanted = options[OPT_PUBLIC_MAINTENANCE]
+            else:
+                wanted = _resource_entity_wanted(options[OPT_PUBLIC], ent.domain)
         elif "_private_" in uid:
             wanted = _resource_entity_wanted(options[OPT_PRIVATE], ent.domain)
         elif uid.endswith("_org_reset_bandwidth"):

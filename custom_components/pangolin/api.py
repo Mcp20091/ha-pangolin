@@ -223,11 +223,17 @@ class PangolinClient:
         """Ask a site's Newt connector to restart its tunnel."""
         await self._request("POST", f"/site/{site_id}/restart")
 
+    async def get_resource(self, resource_id: int) -> dict[str, Any]:
+        """Return one public resource's full settings."""
+        return await self._request("GET", f"/resource/{resource_id}") or {}
+
+    async def update_resource(self, resource_id: int, **fields: Any) -> None:
+        """Change settings on a public resource."""
+        await self._request("POST", f"/resource/{resource_id}", json=fields)
+
     async def set_resource_enabled(self, resource_id: int, enabled: bool) -> None:
         """Enable or disable a resource."""
-        await self._request(
-            "POST", f"/resource/{resource_id}", json={"enabled": enabled}
-        )
+        await self.update_resource(resource_id, enabled=enabled)
 
     async def list_clients(self) -> list[dict[str, Any]]:
         """Return machine clients and user devices, including blocked/archived.

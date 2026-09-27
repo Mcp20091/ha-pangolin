@@ -12,19 +12,24 @@ Your organization gets a hub device with
 - Reset bandwidth (button): zeroes every site's data in/out counters
 
 Each Pangolin site becomes a device with
-- Online (binary sensor, connectivity)
+- Online (binary sensor, connectivity), with type, status, address, Newt and agent versions, exit node and resource count as attributes
 - Restart (button, **experimental, off by default**, Newt sites only): tells the site's Newt connector to restart its WireGuard tunnel, a quick reconnect for a stuck site. Nothing visible happens when it works. Most Pangolin versions don't allow this for API keys, so it usually shows an error instead.
 - Data in / Data out (diagnostic sensors, MB)
 
 Each public resource becomes a device with
 - Enabled (switch) that enables or disables the resource in Pangolin
-- Health (sensor) with the values healthy, degraded, offline, unknown
+- Health (sensor) with the values healthy, degraded, offline, unknown. Its attributes list **each target** (site, host:port, whether its health check is on, and its own health), so you can see which backend is down. They also list the sites it runs through and its protection (SSO, password, PIN, email whitelist, header auth).
+- SSO (switch, **off by default**): turns Pangolin's sign-in requirement on or off. Turning it off lets anyone reach the resource without signing in.
+- Block access (switch): blocks every visitor without disabling the resource.
+- Maintenance mode (switch, **off by default**): shows Pangolin's maintenance page. It **needs a licensed (Enterprise) Pangolin**, because unlicensed servers ignore it (the switch tells you if that happens). It follows the type set in Pangolin: *forced* always shows the page, and *automatic* shows it only while every target is down.
+
+Block access and maintenance mode need one extra request per resource, so they refresh every 5 minutes, and immediately after you change them from Home Assistant. A change made in Pangolin's dashboard can take up to 5 minutes to show.
 
 Each private resource becomes a device with
-- Enabled (switch) that enables or disables the private resource, with its mode, destination, alias and sites as attributes
+- Enabled (switch) that enables or disables the private resource. Its attributes show the mode, destination, alias and alias address, TCP/UDP port ranges, whether ICMP is allowed, and each site it runs through with that site's online state.
 
 Each client (machine client or user device running the Pangolin client) becomes a device with
-- Online (binary sensor, connectivity), with kind, user, version and device model as attributes. It's handy for presence, e.g. "my laptop is connected through Pangolin".
+- Online (binary sensor, connectivity), with kind, user, user type, app version, agent, platform, OS version, architecture and device model as attributes. Device hostnames and serial numbers are deliberately left out. It's handy for presence, e.g. "my laptop is connected through Pangolin".
 - Data in / Data out (diagnostic sensors, MB)
 - Last seen (timestamp sensor, user devices only, **experimental, off by default**): when the device last pinged Pangolin. While a device is connected Pangolin updates this constantly, so the sensor only moves in 5-minute steps (and right away when the device goes offline) to keep your history database small.
 - Blocked and Archived (switches) that block/unblock or archive/unarchive the client
@@ -60,7 +65,7 @@ Open `https://api.example.com/v1/docs`. You should see Pangolin's Swagger UI. Th
 In the Pangolin dashboard, create an **organization** API key with the permissions for the features you want:
 
 - Get Organization and List Sites (always)
-- List Resources, plus Update Resource for the switches (public resources)
+- List Resources, plus Update Resource for the switches, and Get Resource for block access and maintenance mode (public resources)
 - List Site Resources, plus Update Site Resource for the switches (private resources)
 - List Clients, plus Block Client, Unblock Client, Archive Client and Unarchive Client for the switches, and Delete Client for the delete buttons (clients)
 - Reset Organization Bandwidth (reset bandwidth button)
@@ -110,6 +115,9 @@ After the key is checked, you get a list of features to tick:
 | Clients: block and archive switches | Blocked and Archived switches |
 | Clients: delete buttons | Delete client button on machine clients. **Permanent**, so it starts unticked. |
 | Organization: reset bandwidth button | Reset bandwidth button |
+| Public resources: SSO switches | SSO switch. Starts unticked, because turning SSO off exposes the resource. |
+| Public resources: block access switches | Block access switch |
+| Public resources: maintenance mode switches | Maintenance mode switch. Starts unticked, because it needs a licensed Pangolin. |
 
 Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices, and new features stay off. When an update adds features, Home Assistant shows a **"New Pangolin features are available"** notice under Settings > System > Repairs. Press **Fix** to see the new features and the permissions they need, and tick the ones you want. You can also ignore the notice, or turn features on later under Configure.
 
@@ -150,6 +158,8 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 | Clients: switches | List Clients, Block Client, Unblock Client, Archive Client, Unarchive Client |
 | Clients: delete buttons | List Clients, Delete Client |
 | Organization: reset bandwidth | Reset Organization Bandwidth |
+| Public resources: SSO switches | List Resources, Update Resource |
+| Public resources: block access / maintenance switches | List Resources, Get Resource, Update Resource |
 
 ## Troubleshooting
 

@@ -119,6 +119,15 @@
       },
       "client_archived": {
         "name": "Archived"
+      },
+      "resource_sso": {
+        "name": "SSO"
+      },
+      "resource_block_access": {
+        "name": "Block access"
+      },
+      "resource_maintenance": {
+        "name": "Maintenance mode"
       }
     },
     "button": {
@@ -207,7 +216,10 @@
         "client_control": "Clients: block and archive switches",
         "client_delete": "Clients: delete buttons (machine clients only; permanent, off by default)",
         "reset_bandwidth": "Organization: reset bandwidth button",
-        "client_last_seen": "(EXPERIMENTAL) Clients: last seen sensor for user devices. Off by default."
+        "client_last_seen": "(EXPERIMENTAL) Clients: last seen sensor for user devices. Off by default.",
+        "public_sso": "Public resources: SSO switches. Turning SSO off lets anyone reach the resource without signing in. Off by default.",
+        "public_block_access": "Public resources: block access switches",
+        "public_maintenance": "Public resources: maintenance mode switches. Needs a licensed (Enterprise) Pangolin. Off by default."
       }
     }
   },

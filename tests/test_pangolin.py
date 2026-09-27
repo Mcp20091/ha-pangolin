@@ -27,11 +27,15 @@ LAPTOP = {"clientId": 12, "name": "Laptop", "niceId": "laptop", "online": False,
           "firstSeen": 1790000000, "lastSeen": 1790467200,
           "blocked": True, "archived": False, "olmVersion": "1.3.0",
           "username": "alex", "userEmail": "alex@example.com", "deviceModel": "ThinkPad",
-          "megabytesIn": 0, "megabytesOut": 0}
+          "megabytesIn": 0, "megabytesOut": 0, "fingerprintPlatform": "windows",
+          "fingerprintOsVersion": "11", "fingerprintArch": "x64", "agent": "Pangolin Windows",
+          "userType": "internal", "fingerprintHostname": "LAPTOP-SECRET",
+          "fingerprintSerialNumber": "SN-SECRET"}
 
 
 def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200,
-             orgs=(HOME,), orgs_status=200, clients_status=200, BASE=BASE, clear=True):
+             orgs=(HOME,), orgs_status=200, clients_status=200, BASE=BASE, clear=True,
+             block=False, maintenance=False, detail_status=200):
     if clear:
         aioclient_mock.clear_requests()
     aioclient_mock.get(f"{BASE}/", json={"message": "Healthy"})
@@ -56,14 +60,22 @@ def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200,
     aioclient_mock.get(
         f"{BASE}/org/home/sites",
         json=ok({"sites": [{"siteId": 1, "name": "Proxmox", "niceId": "px", "type": "newt",
-                            "online": True, "megabytesIn": 12.5, "megabytesOut": 3.0}],
+                            "online": True, "megabytesIn": 12.5, "megabytesOut": 3.0,
+                            "newtVersion": "1.17.0", "agentVersion": "1.17.0",
+                            "exitNodeName": "exit-1", "resourceCount": 1}],
                  "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
     )
     aioclient_mock.get(
         f"{BASE}/org/home/resources",
         json=ok({"resources": [{"resourceId": 7, "name": "Home Assistant", "niceId": "ha",
                                 "enabled": enabled, "health": health,
-                                "fullDomain": "ha.example.com", "mode": "http"}],
+                                "fullDomain": "ha.example.com", "mode": "http", "ssl": True,
+                                "sso": 1, "passwordId": None, "pincodeId": 4, "whitelist": 0,
+                                "headerAuthId": None,
+                                "sites": [{"siteId": 1, "siteName": "Proxmox", "online": True}],
+                                "targets": [{"targetId": 9, "siteName": "Proxmox",
+                                             "ip": "10.0.0.7", "port": 8123, "enabled": True,
+                                             "hcEnabled": True, "healthStatus": "healthy"}]}],
                  "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
     )
     aioclient_mock.get(
@@ -71,8 +83,16 @@ def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200,
         status=private_status,
         json=ok({"siteResources": [{"siteResourceId": 3, "name": "NAS", "niceId": "nas",
                                     "mode": "host", "destination": "10.0.0.5",
-                                    "enabled": True, "siteNames": ["Proxmox"]}],
+                                    "enabled": True, "siteNames": ["Proxmox"],
+                                    "siteOnlines": [True], "aliasAddress": "100.96.1.1",
+                                    "tcpPortRangeString": "*", "udpPortRangeString": "*",
+                                    "disableIcmp": False}],
                  "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
+    )
+    aioclient_mock.get(
+        f"{BASE}/resource/7", status=detail_status,
+        json=ok({"resourceId": 7, "blockAccess": block, "maintenanceModeEnabled": maintenance,
+                 "maintenanceModeType": "forced"}),
     )
     aioclient_mock.post(f"{BASE}/resource/7", json=ok({"resourceId": 7}))
     aioclient_mock.post(f"{BASE}/private-resource/3", json=ok({"siteResourceId": 3}))
@@ -217,7 +237,7 @@ async def test_private_resource_switch(hass, aioclient_mock):
     sw = hass.states.get("switch.pangolin_nas_enabled")
     assert sw.state == "on"
     assert sw.attributes["destination"] == "10.0.0.5"
-    assert sw.attributes["sites"] == ["Proxmox"]
+    assert sw.attributes["sites"] == [{"name": "Proxmox", "online": True}]
 
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.pangolin_nas_enabled"}, blocking=True
@@ -281,7 +301,7 @@ async def test_feature_step_detects_access(hass, aioclient_mock):
     # Private features are hidden; client delete and site restart start unticked.
     assert suggested_features(result) == [
         "public_status", "public_control", "site_traffic",
-        "client_status", "client_control", "reset_bandwidth"]
+        "client_status", "client_control", "reset_bandwidth", "public_block_access"]
     assert "Private" in result["description_placeholders"]["unavailable"]
 
     # Features the key can't use aren't accepted by the form.
@@ -556,7 +576,8 @@ async def test_diagnostics_are_redacted(hass, aioclient_mock):
     diag = await async_get_config_entry_diagnostics(hass, entry)
     text = str(diag)
     for secret in ("k1.secret", "api.example.com", "ha.example.com", "alex@example.com",
-                   "alex", "10.0.0.5", "Proxmox", "Home Assistant", "home"):
+                   "alex", "10.0.0.5", "10.0.0.7", "Proxmox", "Home Assistant", "home",
+                   "LAPTOP-SECRET", "SN-SECRET", "100.96.1.1"):
         assert secret not in text, secret
     assert diag["counts"] == {"sites": 1, "public_resources": 1,
                               "private_resources": 1, "clients": 2}
@@ -644,7 +665,8 @@ async def test_update_announces_new_features(hass, aioclient_mock, hass_client):
     # Saved by an earlier version: chose features but has no known-features list.
     entry = await setup_entry(hass, features=LEGACY)
     issue_id = (f"new_features_{entry.entry_id}_"
-                "client_status-client_control-client_delete-reset_bandwidth-client_last_seen")
+                "client_status-client_control-client_delete-reset_bandwidth-client_last_seen-"
+                "public_sso-public_block_access-public_maintenance")
     assert pangolin_issues(hass) == {issue_id}
 
     client = await hass_client()
@@ -654,7 +676,7 @@ async def test_update_announces_new_features(hass, aioclient_mock, hass_client):
     assert flow["step_id"] == "confirm"
     # Offered unticked-if-permanent, with the permissions they need.
     assert flow["data_schema"][0]["description"]["suggested_value"] == [
-        "client_status", "client_control", "reset_bandwidth"]
+        "client_status", "client_control", "reset_bandwidth", "public_block_access"]
     assert "List Clients" in flow["description_placeholders"]["permissions"]
     assert "Reset Organization Bandwidth" in flow["description_placeholders"]["permissions"]
 
@@ -757,3 +779,106 @@ async def test_last_seen_off_by_default(hass, aioclient_mock):
     await setup_entry(hass)
     assert hass.states.get("binary_sensor.pangolin_laptop_online") is not None
     assert hass.states.get("sensor.pangolin_laptop_last_seen") is None
+
+
+def resource_gets(aioclient_mock):
+    return sum(1 for c in aioclient_mock.mock_calls
+               if c[0] == "GET" and c[1].path == "/v1/resource/7")
+
+
+async def test_extra_details_as_attributes(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass, features=["public_status", "private_status", "client_status"])
+
+    health = hass.states.get("sensor.pangolin_home_assistant_health").attributes
+    assert health["targets"] == [{"site": "Proxmox", "target": "10.0.0.7:8123", "enabled": True,
+                                  "health_check": True, "health": "healthy"}]
+    assert health["sites"] == [{"name": "Proxmox", "online": True}]
+    assert health["protection"] == {"sso": True, "password": False, "pin": True,
+                                    "email_whitelist": False, "header_auth": False}
+
+    site = hass.states.get("binary_sensor.pangolin_site_proxmox_online").attributes
+    assert site["exit_node"] == "exit-1" and site["resource_count"] == 1
+
+    nas = hass.states.get("binary_sensor.pangolin_nas_enabled").attributes
+    assert nas["sites"] == [{"name": "Proxmox", "online": True}]
+    assert nas["tcp_ports"] == "*" and nas["icmp"] is True
+
+    laptop = hass.states.get("binary_sensor.pangolin_laptop_online").attributes
+    assert laptop["platform"] == "windows" and laptop["os_version"] == "11"
+    # Identifying device details stay out of Home Assistant.
+    assert "LAPTOP-SECRET" not in str(laptop) and "SN-SECRET" not in str(laptop)
+
+
+async def test_sso_switch(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass, features=["public_sso"])
+    assert hass.states.get("switch.pangolin_home_assistant_sso").state == "on"
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.pangolin_home_assistant_sso"}, blocking=True)
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert str(posts[-1][1]).endswith("/resource/7")
+    assert posts[-1][2] == {"sso": False}
+
+
+async def test_block_access_switch_reads_back(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass, features=["public_block_access"])
+    assert hass.states.get("switch.pangolin_home_assistant_block_access").state == "off"
+
+    mock_api(aioclient_mock, block=True)  # Pangolin now reports it blocked
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.pangolin_home_assistant_block_access"},
+        blocking=True)
+    posts = [c for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert posts[-1][2] == {"blockAccess": True}
+    assert hass.states.get("switch.pangolin_home_assistant_block_access").state == "on"
+
+
+async def test_maintenance_ignored_by_unlicensed_server(hass, aioclient_mock):
+    import pytest
+    from homeassistant.exceptions import HomeAssistantError
+
+    mock_api(aioclient_mock)  # detail keeps saying maintenance is off
+    await setup_entry(hass, features=["public_maintenance"])
+    switch = hass.states.get("switch.pangolin_home_assistant_maintenance_mode")
+    assert switch.state == "off"
+    assert switch.attributes["maintenance_type"] == "forced"
+    with pytest.raises(HomeAssistantError, match="licensed"):
+        await hass.services.async_call(
+            "switch", "turn_on",
+            {"entity_id": "switch.pangolin_home_assistant_maintenance_mode"}, blocking=True)
+    assert hass.states.get("switch.pangolin_home_assistant_maintenance_mode").state == "off"
+
+
+async def test_resource_details_refresh_every_5_minutes(hass, aioclient_mock):
+    from datetime import timedelta
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass, features=["public_block_access"])
+    coordinator = entry.runtime_data
+    assert resource_gets(aioclient_mock) == 1
+
+    await coordinator.async_refresh()  # 30 seconds later: no detail calls
+    assert resource_gets(aioclient_mock) == 1
+
+    coordinator._details_fetched_at -= timedelta(minutes=6)
+    await coordinator.async_refresh()
+    assert resource_gets(aioclient_mock) == 2
+
+
+async def test_resource_details_forbidden(hass, aioclient_mock):
+    mock_api(aioclient_mock, detail_status=403)
+    entry = await setup_entry(hass, features=["public_status", "public_block_access"])
+    assert entry.state.name == "LOADED"
+    assert hass.states.get("sensor.pangolin_home_assistant_health").state == "healthy"
+    assert hass.states.get("switch.pangolin_home_assistant_block_access").state == "unavailable"
+
+
+def test_new_switch_permissions():
+    from custom_components.pangolin.const import required_actions
+
+    assert required_actions(["public_sso"]) == [
+        "getOrg", "listSites", "listResources", "updateResource"]
+    assert required_actions(["public_maintenance"]) == [
+        "getOrg", "listSites", "listResources", "getResource", "updateResource"]

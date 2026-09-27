@@ -11,13 +11,22 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import PangolinError
-from .const import LEVEL_CONTROL, OPT_CLIENTS, OPT_PRIVATE, OPT_PUBLIC
+from .const import (
+    LEVEL_CONTROL,
+    OPT_CLIENTS,
+    OPT_PRIVATE,
+    OPT_PUBLIC,
+    OPT_PUBLIC_BLOCK,
+    OPT_PUBLIC_MAINTENANCE,
+    OPT_PUBLIC_SSO,
+)
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
     PangolinClientEntity,
     PangolinPrivateResourceEntity,
     PangolinResourceEntity,
     add_entities_dynamically,
+    private_resource_attributes,
     run_action,
 )
 
@@ -28,14 +37,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     options = entry.runtime_data.options
+
+    def resource_switches(c: PangolinCoordinator, rid: int) -> list[SwitchEntity]:
+        switches: list[SwitchEntity] = []
+        if options[OPT_PUBLIC] == LEVEL_CONTROL:
+            switches.append(PangolinResourceSwitch(c, rid))
+        if options[OPT_PUBLIC_SSO]:
+            switches.append(PangolinResourceSsoSwitch(c, rid))
+        if options[OPT_PUBLIC_BLOCK]:
+            switches.append(PangolinResourceDetailSwitch(c, rid, BLOCK_ACCESS))
+        if options[OPT_PUBLIC_MAINTENANCE]:
+            switches.append(PangolinResourceDetailSwitch(c, rid, MAINTENANCE))
+        return switches
+
     add_entities_dynamically(
         entry,
         async_add_entities,
-        resource_factory=(
-            (lambda c, rid: [PangolinResourceSwitch(c, rid)])
-            if options[OPT_PUBLIC] == LEVEL_CONTROL
-            else None
-        ),
+        resource_factory=resource_switches,
         private_factory=(
             (lambda c, rid: [PangolinPrivateResourceSwitch(c, rid)])
             if options[OPT_PRIVATE] == LEVEL_CONTROL
@@ -124,15 +142,7 @@ class PangolinPrivateResourceSwitch(PangolinPrivateResourceEntity, _EnabledSwitc
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        res = self.resource
-        return {
-            "site_resource_id": self.site_resource_id,
-            "nice_id": res.get("niceId"),
-            "mode": res.get("mode"),
-            "destination": res.get("destination"),
-            "alias": res.get("alias"),
-            "sites": res.get("siteNames"),
-        }
+        return private_resource_attributes(self.resource, self.site_resource_id)
 
 
 class PangolinClientFlagSwitch(PangolinClientEntity, SwitchEntity):
@@ -162,6 +172,114 @@ class PangolinClientFlagSwitch(PangolinClientEntity, SwitchEntity):
         self.client[self._flag] = on
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)
+
+
+class PangolinResourceSsoSwitch(PangolinResourceEntity, SwitchEntity):
+    """Requires (or stops requiring) Pangolin sign-in for a public resource."""
+
+    _attr_translation_key = "resource_sso"
+
+    def __init__(self, coordinator: PangolinCoordinator, resource_id: int) -> None:
+        super().__init__(coordinator, resource_id, "sso")
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.resource.get("sso")
+        return None if value is None else bool(value)
+
+    async def _set(self, on: bool) -> None:
+        await run_action(
+            self.coordinator.client.update_resource(self.resource_id, sso=on),
+            f"Could not turn SSO {'on' if on else 'off'}",
+            "Update Resource",
+        )
+        self.resource["sso"] = on
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)
+
+
+# (API field, unique ID key / translation key, message when Pangolin ignores it)
+BLOCK_ACCESS = (
+    "blockAccess",
+    "block_access",
+    "Pangolin didn't apply the block access change.",
+)
+MAINTENANCE = (
+    "maintenanceModeEnabled",
+    "maintenance",
+    "Pangolin didn't apply maintenance mode. It only works on a licensed "
+    "(Enterprise) Pangolin server.",
+)
+
+
+class PangolinResourceDetailSwitch(PangolinResourceEntity, SwitchEntity):
+    """A resource setting only in the full resource details (block, maintenance)."""
+
+    def __init__(
+        self,
+        coordinator: PangolinCoordinator,
+        resource_id: int,
+        setting: tuple[str, str, str],
+    ) -> None:
+        self._field, key, self._not_applied = setting
+        super().__init__(coordinator, resource_id, key)
+        self._attr_translation_key = f"resource_{key}"
+
+    @property
+    def detail(self) -> dict[str, Any]:
+        return self.coordinator.data.resource_details.get(self.resource_id, {})
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.resource_id in self.coordinator.data.resource_details
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.detail.get(self._field)
+        return None if value is None else bool(value)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self._field != "maintenanceModeEnabled":
+            return None
+        # forced: page always shown; automatic: only while every target is down.
+        return {"maintenance_type": self.detail.get("maintenanceModeType")}
+
+    async def _set(self, on: bool) -> None:
+        await run_action(
+            self.coordinator.client.update_resource(
+                self.resource_id, **{self._field: on}
+            ),
+            "Could not change the setting",
+            "Update Resource",
+        )
+        # Pangolin can accept the request yet ignore it (maintenance mode on an
+        # unlicensed server), so read it back instead of assuming.
+        try:
+            detail = await self.coordinator.async_refresh_resource_detail(
+                self.resource_id
+            )
+        except PangolinError as err:
+            raise HomeAssistantError(
+                f"The change was sent, but reading it back failed: {err}"
+            ) from err
+        if bool(detail.get(self._field)) != on:
+            raise HomeAssistantError(self._not_applied)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._set(True)

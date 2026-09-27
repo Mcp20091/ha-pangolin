@@ -9,6 +9,9 @@ DOMAIN = "pangolin"
 CONF_ORG_ID = "org_id"
 
 DEFAULT_SCAN_INTERVAL = timedelta(seconds=30)
+# Block access and maintenance mode need one request per resource, so they
+# refresh less often (and right after a change made from Home Assistant).
+DETAIL_REFRESH_INTERVAL = timedelta(minutes=5)
 PAGE_SIZE = 100
 
 # Features the user ticks during setup or under Configure (stored in options).
@@ -24,6 +27,9 @@ FEATURE_CLIENT_CONTROL = "client_control"
 FEATURE_CLIENT_DELETE = "client_delete"
 FEATURE_RESET_BANDWIDTH = "reset_bandwidth"
 FEATURE_CLIENT_LAST_SEEN = "client_last_seen"
+FEATURE_PUBLIC_SSO = "public_sso"
+FEATURE_PUBLIC_BLOCK = "public_block_access"
+FEATURE_PUBLIC_MAINTENANCE = "public_maintenance"
 ALL_FEATURES = [
     FEATURE_PUBLIC_STATUS,
     FEATURE_PUBLIC_CONTROL,
@@ -36,6 +42,9 @@ ALL_FEATURES = [
     FEATURE_CLIENT_DELETE,
     FEATURE_RESET_BANDWIDTH,
     FEATURE_CLIENT_LAST_SEEN,
+    FEATURE_PUBLIC_SSO,
+    FEATURE_PUBLIC_BLOCK,
+    FEATURE_PUBLIC_MAINTENANCE,
 ]
 # Features that existed before v0.6.0. Entries saved without a known-features
 # list have seen exactly these, so anything newer gets announced.
@@ -50,11 +59,15 @@ LEGACY_FEATURES = [
 # Stored beside the chosen features: every feature the user has been offered.
 CONF_KNOWN_FEATURES = "known_features"
 # Unticked until the user opts in: permanent actions, site restart (most
-# Pangolin versions don't allow it for API keys) and experimental features.
+# Pangolin versions don't allow it for API keys), experimental features, SSO
+# switches (turning SSO off exposes a resource) and maintenance mode (needs a
+# licensed Pangolin).
 DEFAULT_OFF_FEATURES = {
     FEATURE_CLIENT_DELETE,
     FEATURE_SITE_RESTART,
     FEATURE_CLIENT_LAST_SEEN,
+    FEATURE_PUBLIC_SSO,
+    FEATURE_PUBLIC_MAINTENANCE,
 }
 DEFAULT_FEATURES = [f for f in ALL_FEATURES if f not in DEFAULT_OFF_FEATURES]
 
@@ -78,12 +91,19 @@ FEATURE_ACTIONS = {
     FEATURE_CLIENT_DELETE: ["listClients", "deleteClient"],
     FEATURE_RESET_BANDWIDTH: ["resetSiteBandwidth"],
     FEATURE_CLIENT_LAST_SEEN: ["listClients"],
+    FEATURE_PUBLIC_SSO: ["listResources", "updateResource"],
+    FEATURE_PUBLIC_BLOCK: ["listResources", "getResource", "updateResource"],
+    FEATURE_PUBLIC_MAINTENANCE: ["listResources", "getResource", "updateResource"],
 }
 # Labels as the Pangolin dashboard shows them, plus what each is used for.
 ACTION_INFO = {
     "getOrg": ("Get Organization", "checking the key during setup"),
     "listSites": ("List Sites", "sites and their status"),
     "listResources": ("List Resources", "public resource status"),
+    "getResource": (
+        "Get Resource",
+        "reading block access and maintenance mode for their switches",
+    ),
     "updateResource": ("Update Resource", "public resource switches"),
     "listSiteResources": ("List Site Resources", "private resource status"),
     "updateSiteResource": ("Update Site Resource", "private resource switches"),
@@ -122,6 +142,9 @@ OPT_CLIENTS = "clients"
 OPT_CLIENT_DELETE = "client_delete"
 OPT_RESET_BANDWIDTH = "reset_bandwidth"
 OPT_CLIENT_LAST_SEEN = "client_last_seen"
+OPT_PUBLIC_SSO = "public_sso"
+OPT_PUBLIC_BLOCK = "public_block_access"
+OPT_PUBLIC_MAINTENANCE = "public_maintenance"
 
 LEVEL_OFF = "off"
 LEVEL_STATUS = "status"
@@ -140,8 +163,15 @@ def _level(features: set[str], status: str, control: str) -> str:
 def resolve_features(features: Iterable[str]) -> dict[str, Any]:
     """Turn a list of ticked features into per-area settings."""
     f = set(features)
+    # SSO, block access and maintenance switches live on public resource
+    # devices, so they bring public resource status along.
+    public = f | (
+        {FEATURE_PUBLIC_STATUS}
+        if f & {FEATURE_PUBLIC_SSO, FEATURE_PUBLIC_BLOCK, FEATURE_PUBLIC_MAINTENANCE}
+        else set()
+    )
     return {
-        OPT_PUBLIC: _level(f, FEATURE_PUBLIC_STATUS, FEATURE_PUBLIC_CONTROL),
+        OPT_PUBLIC: _level(public, FEATURE_PUBLIC_STATUS, FEATURE_PUBLIC_CONTROL),
         OPT_PRIVATE: _level(f, FEATURE_PRIVATE_STATUS, FEATURE_PRIVATE_CONTROL),
         OPT_RESTART: FEATURE_SITE_RESTART in f,
         OPT_TRAFFIC: FEATURE_SITE_TRAFFIC in f,
@@ -160,6 +190,9 @@ def resolve_features(features: Iterable[str]) -> dict[str, Any]:
         OPT_CLIENT_DELETE: FEATURE_CLIENT_DELETE in f,
         OPT_RESET_BANDWIDTH: FEATURE_RESET_BANDWIDTH in f,
         OPT_CLIENT_LAST_SEEN: FEATURE_CLIENT_LAST_SEEN in f,
+        OPT_PUBLIC_SSO: FEATURE_PUBLIC_SSO in f,
+        OPT_PUBLIC_BLOCK: FEATURE_PUBLIC_BLOCK in f,
+        OPT_PUBLIC_MAINTENANCE: FEATURE_PUBLIC_MAINTENANCE in f,
     }
 
 # Features that only work when the key can read the matching list.
@@ -172,6 +205,9 @@ FEATURE_NEEDS = {
     FEATURE_CLIENT_CONTROL: OPT_CLIENTS,
     FEATURE_CLIENT_DELETE: OPT_CLIENTS,
     FEATURE_CLIENT_LAST_SEEN: OPT_CLIENTS,
+    FEATURE_PUBLIC_SSO: OPT_PUBLIC,
+    FEATURE_PUBLIC_BLOCK: OPT_PUBLIC,
+    FEATURE_PUBLIC_MAINTENANCE: OPT_PUBLIC,
 }
 
 
