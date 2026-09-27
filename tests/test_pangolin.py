@@ -688,3 +688,25 @@ async def test_no_notice_after_setup_or_saving_features(hass, aioclient_mock):
     await hass.async_block_till_done()
     assert entry.options[CONF_KNOWN_FEATURES] == ALL_FEATURES
     assert pangolin_issues(hass) == set()
+
+
+async def test_no_delete_button_for_user_devices(hass, aioclient_mock):
+    from homeassistant.helpers import entity_registry as er
+
+    mock_api(aioclient_mock)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+        options={"features": ["client_status", "client_delete"]},
+    )
+    entry.add_to_hass(hass)
+    # An earlier version made a Delete button for the user device (client 12).
+    ent_reg = er.async_get(hass)
+    stale = ent_reg.async_get_or_create(
+        "button", DOMAIN, f"{entry.entry_id}_client_12_delete", config_entry=entry)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("button.pangolin_backup_box_delete_client") is not None
+    assert hass.states.get("button.pangolin_laptop_delete_client") is None
+    assert ent_reg.async_get(stale.entity_id) is None

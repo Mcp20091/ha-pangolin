@@ -6,11 +6,11 @@ from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import PangolinError, PangolinNotFoundError
-from .const import OPT_CLIENT_DELETE, OPT_RESET_BANDWIDTH, OPT_RESTART
+from .const import DOMAIN, OPT_CLIENT_DELETE, OPT_RESET_BANDWIDTH, OPT_RESTART
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
     PangolinClientEntity,
@@ -46,12 +46,22 @@ async def async_setup_entry(
             if options[OPT_RESTART]
             else None
         ),
-        client_factory=(
-            (lambda c, cid: [PangolinClientDelete(c, cid)])
-            if options[OPT_CLIENT_DELETE]
-            else None
-        ),
+        client_factory=_delete_buttons if options[OPT_CLIENT_DELETE] else None,
     )
+
+
+def _delete_buttons(
+    coordinator: PangolinCoordinator, client_id: int
+) -> list[ButtonEntity]:
+    """Pangolin only deletes machine clients; user devices can only be archived."""
+    if coordinator.data.clients[client_id].get("kind") == "machine":
+        return [PangolinClientDelete(coordinator, client_id)]
+    # Drop a button an earlier version created for a user device.
+    ent_reg = er.async_get(coordinator.hass)
+    unique_id = f"{coordinator.config_entry.entry_id}_client_{client_id}_delete"
+    if entity_id := ent_reg.async_get_entity_id("button", DOMAIN, unique_id):
+        ent_reg.async_remove(entity_id)
+    return []
 
 
 class PangolinSiteRestart(PangolinSiteEntity, ButtonEntity):

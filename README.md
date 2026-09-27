@@ -2,7 +2,7 @@
 
 Custom integration that connects Home Assistant to the [Pangolin](https://github.com/fosrl/pangolin) Integration API.
 
-> **Built with Claude.** This integration was written by [Claude](https://claude.ai) (Anthropic's AI assistant) from the Pangolin Integration API OpenAPI spec. It has automated tests but limited real-world testing so far. It is an unofficial community project and is not affiliated with or endorsed by Fossorial/Pangolin. Use at your own risk and please open an issue if something breaks.
+> **AI-written ("vibe coded").** [Claude](https://claude.ai) (Anthropic's AI) wrote this integration, with the maintainer directing its features and testing it on their own Pangolin setup. It has automated tests, but **it hasn't had a line-by-line human code review**. Some features change your Pangolin server (enabling/disabling resources, blocking/archiving/deleting clients, changing API key permissions), so try them carefully. It's an unofficial project, not affiliated with or endorsed by Fossorial/Pangolin. Use at your own risk, and please open an issue if something breaks.
 
 ## Entities
 
@@ -27,7 +27,7 @@ Each client (machine client or user device running the Pangolin client) becomes 
 - Online (binary sensor, connectivity), with kind, user, version and device model as attributes. It's handy for presence, e.g. "my laptop is connected through Pangolin".
 - Data in / Data out (diagnostic sensors, MB)
 - Blocked and Archived (switches) that block/unblock or archive/unarchive the client
-- Delete client (button, opt-in): permanently deletes the client in Pangolin and removes its device from Home Assistant
+- Delete client (button, opt-in, **machine clients only**): permanently deletes the client in Pangolin and removes its device from Home Assistant. Pangolin doesn't allow deleting user devices (phones and laptops signed in as a user); archive those instead.
 
 Resources show up in Home Assistant's device list as services, so they're easy to tell apart from sites and clients.
 
@@ -106,7 +106,7 @@ After the key is checked, you get a list of features to tick:
 | Sites: data in/out sensors | Data in / Data out diagnostic sensors |
 | Clients: status | Online sensor and Data in / Data out sensors per client |
 | Clients: block and archive switches | Blocked and Archived switches |
-| Clients: delete buttons | Delete client button. **Permanent**, so it starts unticked. |
+| Clients: delete buttons | Delete client button on machine clients. **Permanent**, so it starts unticked. |
 | Organization: reset bandwidth button | Reset bandwidth button |
 
 Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices, and new features stay off. When an update adds features, Home Assistant shows a **"New Pangolin features are available"** notice under Settings > System > Repairs. Press **Fix** to see the new features and the permissions they need, and tick the ones you want. You can also ignore the notice, or turn features on later under Configure.

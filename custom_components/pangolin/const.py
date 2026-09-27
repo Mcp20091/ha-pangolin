@@ -89,7 +89,7 @@ ACTION_INFO = {
     "unblockClient": ("Unblock Client", "client Blocked switches"),
     "archiveClient": ("Archive Client", "client Archived switches"),
     "unarchiveClient": ("Unarchive Client", "client Archived switches"),
-    "deleteClient": ("Delete Client", "client Delete buttons"),
+    "deleteClient": ("Delete Client", "Delete buttons on machine clients"),
     "resetSiteBandwidth": (
         "Reset Organization Bandwidth",
         "the Reset bandwidth button",
