@@ -98,6 +98,15 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 | Sites: restart buttons | Restart Site (not offered in the dashboard's key editor; some versions don't allow it for API keys) |
 | Sites: data in/out | nothing extra |
 
+## Contributing
+
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the tools you need, how to run the tests and how CI checks changes. [AGENTS.md](AGENTS.md) collects what's worth knowing about the Pangolin API and this codebase before you change it, for people and AI coding agents alike.
+
 ## Credits
 
-The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to.
+- **[Pangolin](https://github.com/fosrl/pangolin)** by the Fossorial team and its contributors: the self-hosted tunneled reverse proxy this integration talks to, its Integration API, and its documentation. The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to. Please support the project upstream.
+- **[Home Assistant](https://www.home-assistant.io)** and its developer documentation
+- **[HACS](https://hacs.xyz)** for custom integration distribution and validation
+- **[pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component)** for the test harness
+- **[Material Design Icons](https://pictogrammers.com/library/mdi/)** by Pictogrammers for entity icons
+- Written with **[Claude](https://claude.ai)** by Anthropic, and maintained by [@Mcp20091](https://github.com/Mcp20091)

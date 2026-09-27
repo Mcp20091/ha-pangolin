@@ -153,7 +153,7 @@
       "unknown": "Unexpected response from Pangolin.",
       "root_invalid": "That root key was rejected.",
       "not_root": "That key can't read API key permissions. It must be a root key with the List API Key Actions permission.",
-      "key_format": "The integration's key isn't in the usual <id>.<secret> form, so it can't be looked up.",
+      "key_format": "The integration's key isn't in the usual ID.secret form, so it can't be looked up.",
       "key_not_found": "Pangolin couldn't find this integration's key in the organization.",
       "apply_denied": "Pangolin refused the change. The key making it needs Set API Key Allowed Actions (and Create API Key when replacing a root key)."
     }
