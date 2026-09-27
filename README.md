@@ -1,4 +1,4 @@
-# Pangolin for Home Assistant
+# Pangolin (Unofficial) for Home Assistant
 
 Custom integration that connects Home Assistant to the [Pangolin](https://github.com/fosrl/pangolin) Integration API.
 
@@ -8,6 +8,8 @@ Custom integration that connects Home Assistant to the [Pangolin](https://github
 
 Your organization gets a hub device with
 - Sites online (sensor): number of online sites, with every site's name, online state, status (pending or approved), type and address in the `sites` attribute
+- API reachable (diagnostic binary sensor): whether Pangolin answers at all. This stays available when everything else is unavailable, so you can tell "Pangolin is down" apart from "the key stopped working".
+- Reset bandwidth (button): zeroes every site's data in/out counters
 
 Each Pangolin site becomes a device with
 - Online (binary sensor, connectivity)
@@ -21,7 +23,15 @@ Each public resource becomes a device with
 Each private resource becomes a device with
 - Enabled (switch) that enables or disables the private resource, with its mode, destination, alias and sites as attributes
 
-New sites and resources are picked up automatically. Data refreshes every 30 seconds.
+Each client (machine client or user device running the Pangolin client) becomes a device with
+- Online (binary sensor, connectivity), with kind, user, version and device model as attributes. It's handy for presence, e.g. "my laptop is connected through Pangolin".
+- Data in / Data out (diagnostic sensors, MB)
+- Blocked and Archived (switches) that block/unblock or archive/unarchive the client
+- Delete client (button, opt-in): permanently deletes the client in Pangolin and removes its device from Home Assistant
+
+Resources show up in Home Assistant's device list as services, so they're easy to tell apart from sites and clients.
+
+New sites, resources and clients are picked up automatically. Data refreshes every 30 seconds.
 
 ## Pangolin requirements
 
@@ -51,13 +61,15 @@ In the Pangolin dashboard, create an **organization** API key with the permissio
 - Get Organization and List Sites (always)
 - List Resources, plus Update Resource for the switches (public resources)
 - List Site Resources, plus Update Site Resource for the switches (private resources)
+- List Clients, plus Block Client, Unblock Client, Archive Client and Unarchive Client for the switches, and Delete Client for the delete buttons (clients)
+- Reset Organization Bandwidth (reset bandwidth button)
 - Restart Site (restart buttons; see the note below)
 
 The full per-feature table is under [Permission check](#permission-check-advanced). Once the integration is set up, that tool can work the list out, or adjust the key for you.
 
 A root key also works and lets setup list your organizations, but it can do anything on the server. An org key limited to the permissions above is safer.
 
-Private resources are optional. If the key can't list them, or your Pangolin version doesn't have the private resources endpoint, the integration skips them and logs a warning. Grant the permission and reload the integration to add them later.
+Private resources and clients are optional. If the key can't list them, or your Pangolin version doesn't have the private resources endpoint, the integration skips them and logs a warning. Grant the permission and reload the integration to add them later.
 
 Site restart is part of the Integration API spec, but some Pangolin versions only allow it from the dashboard. If so, pressing Restart shows an error saying it isn't supported.
 
@@ -92,12 +104,24 @@ After the key is checked, you get a list of features to tick:
 | Private resources: enable/disable switches | Enabled switch |
 | Sites: restart buttons | Restart button per Newt site |
 | Sites: data in/out sensors | Data in / Data out diagnostic sensors |
+| Clients: status | Online sensor and Data in / Data out sensors per client |
+| Clients: block and archive switches | Blocked and Archived switches |
+| Clients: delete buttons | Delete client button. **Permanent**, so it starts unticked. |
+| Organization: reset bandwidth button | Reset bandwidth button |
 
-Site online sensors and the Sites online summary are always on.
+Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices; new features stay off until you tick them under Configure.
 
-Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked. Write permissions (Update Resource, Update Site Resource, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
+Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked except client delete buttons. Write permissions (Update Resource, Update Site Resource, the client actions, Reset Organization Bandwidth, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
 
 To change features later, go to the integration's page and choose Configure. Entities and devices for features you turn off are removed.
+
+### Reconfigure
+
+To change the Integration API address, the SSL check or the API key, open the integration's menu and choose **Reconfigure**. Leave the key empty to keep the current one. The organization, devices and entities stay as they are.
+
+### Removing old devices
+
+If a site, resource or client is deleted in Pangolin, its device stays in Home Assistant as unavailable. Delete it from the device page. Home Assistant only allows that once Pangolin no longer has it.
 
 ### Permission check (advanced)
 
@@ -107,7 +131,7 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 - **With a root key**, it compares that list with what the integration's key actually has, then offers to add what's missing and remove what isn't needed. Tick features that are off today to add the permissions they'll need. The key is found automatically from its ID (the part before the `.`), so you don't need to enter its name.
 - **If the integration runs on a root key**, it can create a new organization key with only the needed permissions, check that it works, and switch to it. Your root key isn't changed or deleted.
 
-> **Requirements:** Pangolin only lets **root** API keys read or change key permissions. To compare, the root key needs **List API Key Actions**. To apply changes, it also needs **Set API Key Allowed Actions**, plus **Create API Key** when replacing a root key. The root key you enter is used for that one check and is never saved.
+> **Requirements:** Pangolin has two kinds of API keys. **Organization keys** are made in an organization's Settings > API Keys. Even with every box ticked, they can't read or change key permissions, because those permissions aren't offered for them. **Root keys** are made by a server admin in **Server Admin > API Keys**, and only they can do this. To compare, the root key needs **List API Key Actions**. To apply changes, it also needs **Set API Key Allowed Actions**, plus **Create API Key** when replacing a root key. The root key you enter is used for that one check and is never saved.
 
 > **Warning: use at your own risk.** Changing permissions can cut off features you use now, features added in later versions, and anything else that uses the same key. Nothing changes until you tick the confirmation box. This is an unofficial project and its authors aren't responsible for lost access, connection problems or other issues caused by permission changes.
 
@@ -120,6 +144,10 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 | Private resources: switches | List Site Resources, Update Site Resource |
 | Sites: restart buttons | Restart Site (not offered in the dashboard's key editor; some versions don't allow it for API keys) |
 | Sites: data in/out | nothing extra |
+| Clients: status | List Clients |
+| Clients: switches | List Clients, Block Client, Unblock Client, Archive Client, Unarchive Client |
+| Clients: delete buttons | List Clients, Delete Client |
+| Organization: reset bandwidth | Reset Organization Bandwidth |
 
 ## Troubleshooting
 
@@ -137,6 +165,12 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 **Some features are missing from the checklist**
 - The key can't read that resource list (see the note on the checklist screen). Add **List Resources** or **List Site Resources** to the key, then open Configure > Choose features again. Configure > Permission check lists exactly what's needed.
 
+**The permission check says my key isn't a root key**
+- Organization keys can't read or change key permissions, even with every permission ticked. Only root keys, made in Server Admin > API Keys, can. See [Permission check](#permission-check-advanced).
+
+**Clients don't show up**
+- The key lacks **List Clients**. The log shows "Clients unavailable, skipping them". Grant it, then reload the integration.
+
 **Private resources don't show up**
 - The key lacks **List Site Resources**, or your Pangolin version has no private resources endpoint. The log shows "Private resources unavailable, skipping them". Grant the permission, then reload the integration.
 
@@ -153,6 +187,7 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 - Home Assistant can't reach Pangolin right now (see the first item), or the site or resource was deleted in Pangolin.
 
 **Getting more detail**
+- On the integration's page, open the menu and choose **Download diagnostics**. Keys, addresses, domains, names and user details are removed from the file.
 - On the integration's page, open the menu and choose **Enable debug logging**, reproduce the problem, then disable it to download the log.
 - When [opening an issue](https://github.com/Mcp20091/ha-pangolin/issues), include your Home Assistant and Pangolin versions and the relevant log lines. **Remove API keys and your domain names first.**
 

@@ -8,12 +8,15 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LEVEL_STATUS, OPT_PRIVATE, OPT_PUBLIC
+from .const import LEVEL_OFF, LEVEL_STATUS, OPT_CLIENTS, OPT_PRIVATE, OPT_PUBLIC
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
+    PangolinClientEntity,
+    PangolinOrgEntity,
     PangolinPrivateResourceEntity,
     PangolinResourceEntity,
     PangolinSiteEntity,
@@ -27,6 +30,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     options = entry.runtime_data.options
+    async_add_entities([PangolinApiReachable(entry.runtime_data)])
     add_entities_dynamically(
         entry,
         async_add_entities,
@@ -40,6 +44,11 @@ async def async_setup_entry(
         private_factory=(
             (lambda c, rid: [PangolinPrivateResourceEnabled(c, rid)])
             if options[OPT_PRIVATE] == LEVEL_STATUS
+            else None
+        ),
+        client_factory=(
+            (lambda c, cid: [PangolinClientOnline(c, cid)])
+            if options[OPT_CLIENTS] != LEVEL_OFF
             else None
         ),
     )
@@ -97,3 +106,52 @@ class PangolinPrivateResourceEnabled(PangolinPrivateResourceEntity, _ReadOnlyEna
 
     def __init__(self, coordinator: PangolinCoordinator, site_resource_id: int) -> None:
         super().__init__(coordinator, site_resource_id, "enabled")
+
+
+class PangolinApiReachable(PangolinOrgEntity, BinarySensorEntity):
+    """Whether Pangolin answers at all, separate from the key being accepted."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "api_reachable"
+
+    def __init__(self, coordinator: PangolinCoordinator) -> None:
+        super().__init__(coordinator, "api_reachable")
+
+    @property
+    def available(self) -> bool:
+        # Stays available when updates fail, since reporting that is its job.
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.api_reachable
+
+
+class PangolinClientOnline(PangolinClientEntity, BinarySensorEntity):
+    """Whether a client (machine client or user device) is connected."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_translation_key = "client_online"
+
+    def __init__(self, coordinator: PangolinCoordinator, client_id: int) -> None:
+        super().__init__(coordinator, client_id, "online")
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.client.get("online")
+        return None if value is None else bool(value)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        client = self.client
+        return {
+            "client_id": self.client_id,
+            "kind": client.get("kind"),
+            "user": client.get("username"),
+            "version": client.get("olmVersion"),
+            "device_model": client.get("deviceModel"),
+            "blocked": client.get("blocked"),
+            "archived": client.get("archived"),
+            "approval_state": client.get("approvalState"),
+        }

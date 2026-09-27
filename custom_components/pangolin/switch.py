@@ -11,12 +11,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import PangolinError
-from .const import LEVEL_CONTROL, OPT_PRIVATE, OPT_PUBLIC
+from .const import LEVEL_CONTROL, OPT_CLIENTS, OPT_PRIVATE, OPT_PUBLIC
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
+    PangolinClientEntity,
     PangolinPrivateResourceEntity,
     PangolinResourceEntity,
     add_entities_dynamically,
+    run_action,
 )
 
 
@@ -37,6 +39,16 @@ async def async_setup_entry(
         private_factory=(
             (lambda c, rid: [PangolinPrivateResourceSwitch(c, rid)])
             if options[OPT_PRIVATE] == LEVEL_CONTROL
+            else None
+        ),
+        client_factory=(
+            (
+                lambda c, cid: [
+                    PangolinClientFlagSwitch(c, cid, "blocked"),
+                    PangolinClientFlagSwitch(c, cid, "archived"),
+                ]
+            )
+            if options[OPT_CLIENTS] == LEVEL_CONTROL
             else None
         ),
     )
@@ -121,3 +133,38 @@ class PangolinPrivateResourceSwitch(PangolinPrivateResourceEntity, _EnabledSwitc
             "alias": res.get("alias"),
             "sites": res.get("siteNames"),
         }
+
+
+class PangolinClientFlagSwitch(PangolinClientEntity, SwitchEntity):
+    """Blocks/unblocks or archives/unarchives a client."""
+
+    def __init__(
+        self, coordinator: PangolinCoordinator, client_id: int, flag: str
+    ) -> None:
+        super().__init__(coordinator, client_id, flag)
+        self._flag = flag
+        self._attr_translation_key = f"client_{flag}"
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.client.get(self._flag)
+        return None if value is None else bool(value)
+
+    async def _set(self, on: bool) -> None:
+        client = self.coordinator.client
+        if self._flag == "blocked":
+            action = client.set_client_blocked(self.client_id, on)
+            permission = "Block Client" if on else "Unblock Client"
+        else:
+            action = client.set_client_archived(self.client_id, on)
+            permission = "Archive Client" if on else "Unarchive Client"
+        await run_action(action, f"Could not update client {self._flag}", permission)
+        self.client[self._flag] = on
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)

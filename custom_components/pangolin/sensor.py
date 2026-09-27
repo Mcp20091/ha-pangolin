@@ -13,9 +13,10 @@ from homeassistant.const import EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LEVEL_OFF, OPT_PUBLIC, OPT_TRAFFIC
+from .const import LEVEL_OFF, OPT_CLIENTS, OPT_PUBLIC, OPT_TRAFFIC
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
+    PangolinClientEntity,
     PangolinOrgEntity,
     PangolinResourceEntity,
     PangolinSiteEntity,
@@ -50,6 +51,16 @@ async def async_setup_entry(
         resource_factory=(
             (lambda c, rid: [PangolinResourceHealth(c, rid)])
             if options[OPT_PUBLIC] != LEVEL_OFF
+            else None
+        ),
+        client_factory=(
+            (
+                lambda c, cid: [
+                    PangolinClientTraffic(c, cid, "megabytesIn", "data_in"),
+                    PangolinClientTraffic(c, cid, "megabytesOut", "data_out"),
+                ]
+            )
+            if options[OPT_CLIENTS] != LEVEL_OFF
             else None
         ),
     )
@@ -126,3 +137,25 @@ class PangolinSitesOnline(PangolinOrgEntity, SensorEntity):
                 for s in sites
             ],
         }
+
+
+class PangolinClientTraffic(PangolinClientEntity, SensorEntity):
+    """Data transferred by a client."""
+
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self, coordinator: PangolinCoordinator, client_id: int, field: str, key: str
+    ) -> None:
+        super().__init__(coordinator, client_id, key)
+        self._field = field
+        self._attr_translation_key = key
+
+    @property
+    def native_value(self) -> float | None:
+        value = self.client.get(self._field)
+        return None if value is None else float(value)

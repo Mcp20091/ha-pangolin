@@ -19,6 +19,10 @@ FEATURE_PRIVATE_STATUS = "private_status"
 FEATURE_PRIVATE_CONTROL = "private_control"
 FEATURE_SITE_RESTART = "site_restart"
 FEATURE_SITE_TRAFFIC = "site_traffic"
+FEATURE_CLIENT_STATUS = "client_status"
+FEATURE_CLIENT_CONTROL = "client_control"
+FEATURE_CLIENT_DELETE = "client_delete"
+FEATURE_RESET_BANDWIDTH = "reset_bandwidth"
 ALL_FEATURES = [
     FEATURE_PUBLIC_STATUS,
     FEATURE_PUBLIC_CONTROL,
@@ -26,7 +30,14 @@ ALL_FEATURES = [
     FEATURE_PRIVATE_CONTROL,
     FEATURE_SITE_RESTART,
     FEATURE_SITE_TRAFFIC,
+    FEATURE_CLIENT_STATUS,
+    FEATURE_CLIENT_CONTROL,
+    FEATURE_CLIENT_DELETE,
+    FEATURE_RESET_BANDWIDTH,
 ]
+# Permanent actions stay unticked until the user opts in.
+DEFAULT_OFF_FEATURES = {FEATURE_CLIENT_DELETE}
+DEFAULT_FEATURES = [f for f in ALL_FEATURES if f not in DEFAULT_OFF_FEATURES]
 
 # Pangolin API key permissions (action IDs) each feature needs.
 BASE_ACTIONS = ["getOrg", "listSites"]
@@ -37,6 +48,16 @@ FEATURE_ACTIONS = {
     FEATURE_PRIVATE_CONTROL: ["listSiteResources", "updateSiteResource"],
     FEATURE_SITE_RESTART: ["restartSite"],
     FEATURE_SITE_TRAFFIC: [],
+    FEATURE_CLIENT_STATUS: ["listClients"],
+    FEATURE_CLIENT_CONTROL: [
+        "listClients",
+        "blockClient",
+        "unblockClient",
+        "archiveClient",
+        "unarchiveClient",
+    ],
+    FEATURE_CLIENT_DELETE: ["listClients", "deleteClient"],
+    FEATURE_RESET_BANDWIDTH: ["resetSiteBandwidth"],
 }
 # Labels as the Pangolin dashboard shows them, plus what each is used for.
 ACTION_INFO = {
@@ -50,6 +71,16 @@ ACTION_INFO = {
         "Restart Site",
         "restart buttons (not listed in the dashboard's key editor; some "
         "Pangolin versions don't allow it for API keys at all)",
+    ),
+    "listClients": ("List Clients", "clients and their status"),
+    "blockClient": ("Block Client", "client Blocked switches"),
+    "unblockClient": ("Unblock Client", "client Blocked switches"),
+    "archiveClient": ("Archive Client", "client Archived switches"),
+    "unarchiveClient": ("Unarchive Client", "client Archived switches"),
+    "deleteClient": ("Delete Client", "client Delete buttons"),
+    "resetSiteBandwidth": (
+        "Reset Organization Bandwidth",
+        "the Reset bandwidth button",
     ),
 }
 
@@ -67,6 +98,9 @@ OPT_PUBLIC = "public_resources"
 OPT_PRIVATE = "private_resources"
 OPT_RESTART = "site_restart"
 OPT_TRAFFIC = "site_traffic"
+OPT_CLIENTS = "clients"
+OPT_CLIENT_DELETE = "client_delete"
+OPT_RESET_BANDWIDTH = "reset_bandwidth"
 
 LEVEL_OFF = "off"
 LEVEL_STATUS = "status"
@@ -90,4 +124,12 @@ def resolve_features(features: Iterable[str]) -> dict[str, Any]:
         OPT_PRIVATE: _level(f, FEATURE_PRIVATE_STATUS, FEATURE_PRIVATE_CONTROL),
         OPT_RESTART: FEATURE_SITE_RESTART in f,
         OPT_TRAFFIC: FEATURE_SITE_TRAFFIC in f,
+        # Delete buttons live on client devices, so they bring status along.
+        OPT_CLIENTS: _level(
+            f | ({FEATURE_CLIENT_STATUS} if FEATURE_CLIENT_DELETE in f else set()),
+            FEATURE_CLIENT_STATUS,
+            FEATURE_CLIENT_CONTROL,
+        ),
+        OPT_CLIENT_DELETE: FEATURE_CLIENT_DELETE in f,
+        OPT_RESET_BANDWIDTH: FEATURE_RESET_BANDWIDTH in f,
     }

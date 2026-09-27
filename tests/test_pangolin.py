@@ -3,7 +3,12 @@ from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pangolin.const import ALL_FEATURES, CONF_ORG_ID, DOMAIN
+from custom_components.pangolin.const import (
+    ALL_FEATURES,
+    CONF_ORG_ID,
+    DEFAULT_FEATURES,
+    DOMAIN,
+)
 
 BASE = "https://api.example.com/v1"
 
@@ -15,9 +20,32 @@ def ok(data):
 HOME = {"orgId": "home", "name": "Home"}
 
 
+MACHINE = {"clientId": 11, "name": "Backup box", "niceId": "backup", "type": "olm",
+           "online": True, "blocked": False, "archived": False, "olmVersion": "1.2.0",
+           "megabytesIn": 5.0, "megabytesOut": 1.5, "subnet": "100.90.128.4/32"}
+LAPTOP = {"clientId": 12, "name": "Laptop", "niceId": "laptop", "online": False,
+          "blocked": True, "archived": False, "olmVersion": "1.3.0",
+          "username": "alex", "userEmail": "alex@example.com", "deviceModel": "ThinkPad",
+          "megabytesIn": 0, "megabytesOut": 0}
+
+
 def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200,
-             orgs=(HOME,), orgs_status=200):
-    aioclient_mock.clear_requests()
+             orgs=(HOME,), orgs_status=200, clients_status=200, BASE=BASE, clear=True):
+    if clear:
+        aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{BASE}/", json={"message": "Healthy"})
+    aioclient_mock.get(
+        f"{BASE}/org/home/clients", status=clients_status,
+        json=ok({"clients": [MACHINE], "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
+    )
+    aioclient_mock.get(
+        f"{BASE}/org/home/user-devices",
+        json=ok({"devices": [LAPTOP], "pagination": {"total": 1, "page": 1, "pageSize": 100}}),
+    )
+    for action in ("block", "unblock", "archive", "unarchive"):
+        aioclient_mock.post(f"{BASE}/client/11/{action}", json=ok(None))
+    aioclient_mock.delete(f"{BASE}/client/11", json=ok(None))
+    aioclient_mock.post(f"{BASE}/org/home/reset-bandwidth", json=ok(None))
     aioclient_mock.get(
         f"{BASE}/orgs", status=orgs_status,
         json=ok({"orgs": list(orgs), "pagination": {"total": len(orgs), "limit": 1000, "offset": 0}}),
@@ -249,8 +277,10 @@ async def test_feature_step_detects_access(hass, aioclient_mock):
     mock_api(aioclient_mock, private_status=403)
     result = await start_flow(hass)
     assert result["step_id"] == "features"
+    # Private features are hidden, and client delete starts unticked.
     assert suggested_features(result) == [
-        "public_status", "public_control", "site_restart", "site_traffic"]
+        "public_status", "public_control", "site_restart", "site_traffic",
+        "client_status", "client_control", "reset_bandwidth"]
     assert "Private" in result["description_placeholders"]["unavailable"]
 
     # Features the key can't use aren't accepted by the form.
@@ -281,7 +311,7 @@ async def test_options_flow_removes_disabled_entities(hass, aioclient_mock):
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"next_step_id": "features"})
     assert result["step_id"] == "features"
-    assert suggested_features(result) == ALL_FEATURES
+    assert suggested_features(result) == DEFAULT_FEATURES
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"features": ["public_status", "public_control", "private_status"]}
     )
@@ -412,3 +442,183 @@ async def test_resources_are_service_devices(hass, aioclient_mock):
     assert device_of("switch.pangolin_home_assistant_enabled").entry_type is service
     assert device_of("switch.pangolin_nas_enabled").entry_type is service
     assert device_of("binary_sensor.pangolin_site_proxmox_online").entry_type is None
+
+
+
+def entity_ids(hass, domain):
+    return sorted(e for e in hass.states.async_entity_ids(domain) if "pangolin" in e)
+
+
+async def test_clients(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+
+    online = hass.states.get("binary_sensor.pangolin_backup_box_online")
+    assert online.state == "on"
+    assert online.attributes["kind"] == "machine"
+    laptop = hass.states.get("binary_sensor.pangolin_laptop_online")
+    assert laptop.state == "off"
+    assert laptop.attributes["kind"] == "user"
+    assert laptop.attributes["user"] == "alex"
+    assert "alex@example.com" not in str(laptop.attributes)
+    assert hass.states.get("sensor.pangolin_backup_box_data_in").state == "5.0"
+    assert hass.states.get("switch.pangolin_laptop_blocked").state == "on"
+    assert hass.states.get("switch.pangolin_backup_box_archived").state == "off"
+
+    # Blocked and archived clients are asked for explicitly.
+    gets = [c for c in aioclient_mock.mock_calls
+            if c[0] == "GET" and c[1].path.endswith("/org/home/clients")]
+    assert gets[-1][1].query["status"] == "active,blocked,archived"
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.pangolin_backup_box_blocked"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.pangolin_backup_box_archived"}, blocking=True)
+    posts = [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert posts[-2].endswith("/client/11/block")
+    assert posts[-1].endswith("/client/11/archive")
+
+    # Delete is opt-in, so it isn't there by default.
+    assert hass.states.get("button.pangolin_backup_box_delete_client") is None
+
+
+async def test_client_action_without_permission(hass, aioclient_mock):
+    import pytest
+    from homeassistant.exceptions import HomeAssistantError
+
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(f"{BASE}/client/11/block", status=403, json={"error": True})
+    with pytest.raises(HomeAssistantError, match="needs the Block Client permission"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.pangolin_backup_box_blocked"},
+            blocking=True)
+
+
+async def test_client_delete_removes_device(hass, aioclient_mock):
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    mock_api(aioclient_mock)
+    await setup_entry(hass, features=["client_status", "client_delete"])
+    ent_reg, dev_reg = er.async_get(hass), dr.async_get(hass)
+    device_id = ent_reg.async_get("button.pangolin_backup_box_delete_client").device_id
+
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.pangolin_backup_box_delete_client"},
+        blocking=True)
+    deletes = [c for c in aioclient_mock.mock_calls if c[0] == "DELETE"]
+    assert str(deletes[-1][1]).endswith("/client/11")
+    assert dev_reg.async_get(device_id) is None
+
+
+async def test_clients_optional(hass, aioclient_mock):
+    mock_api(aioclient_mock, clients_status=403)
+    entry = await setup_entry(hass)
+    assert entry.state.name == "LOADED"
+    assert entity_ids(hass, "switch")  # resources still there
+    assert hass.states.get("binary_sensor.pangolin_backup_box_online") is None
+
+
+async def test_reset_bandwidth(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.pangolin_home_reset_bandwidth"}, blocking=True)
+    posts = [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "POST"]
+    assert posts[-1].endswith("/org/home/reset-bandwidth")
+
+
+async def test_api_reachable_when_pangolin_is_down(hass, aioclient_mock):
+    import aiohttp
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass)
+    assert hass.states.get("binary_sensor.pangolin_home_api_reachable").state == "on"
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{BASE}/", exc=aiohttp.ClientError())
+    aioclient_mock.get(f"{BASE}/org/home/sites", exc=aiohttp.ClientError())
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    reachable = hass.states.get("binary_sensor.pangolin_home_api_reachable")
+    assert reachable.state == "off"  # still available, and says why
+    assert hass.states.get("binary_sensor.pangolin_site_proxmox_online").state == "unavailable"
+
+
+async def test_diagnostics_are_redacted(hass, aioclient_mock):
+    from custom_components.pangolin.diagnostics import async_get_config_entry_diagnostics
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass, api_key="k1.secret")
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    text = str(diag)
+    for secret in ("k1.secret", "api.example.com", "ha.example.com", "alex@example.com",
+                   "alex", "10.0.0.5", "Proxmox", "Home Assistant", "home"):
+        assert secret not in text, secret
+    assert diag["counts"] == {"sites": 1, "public_resources": 1,
+                              "private_resources": 1, "clients": 2}
+
+
+async def test_reconfigure_changes_url_and_key(hass, aioclient_mock):
+    new = "https://pangolin-api.example.net/v1"
+    mock_api(aioclient_mock)
+    mock_api(aioclient_mock, BASE=new, clear=False)
+    entry = await setup_entry(hass, api_key="k1.secret")
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["step_id"] == "reconfigure"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_URL: "https://pangolin-api.example.net", CONF_API_KEY: "k2.secret",
+         CONF_VERIFY_SSL: False},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done()
+    assert entry.data[CONF_URL] == new
+    assert entry.data[CONF_API_KEY] == "k2.secret"
+    assert entry.data[CONF_VERIFY_SSL] is False
+    assert entry.data[CONF_ORG_ID] == "home"
+    assert entry.unique_id == f"{new}|home"
+
+
+async def test_reconfigure_keeps_key_when_blank(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass, api_key="k1.secret")
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "https://api.example.com", CONF_VERIFY_SSL: True})
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_API_KEY] == "k1.secret"
+
+
+async def test_stale_devices_can_be_removed(hass, aioclient_mock):
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from custom_components.pangolin import async_remove_config_entry_device
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass)
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+
+    def device_of(entity_id):
+        return dev_reg.async_get(ent_reg.async_get(entity_id).device_id)
+
+    live = device_of("binary_sensor.pangolin_backup_box_online")
+    org = device_of("binary_sensor.pangolin_home_api_reachable")
+    gone = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{entry.entry_id}_client_99")})
+    assert await async_remove_config_entry_device(hass, entry, gone) is True
+    assert await async_remove_config_entry_device(hass, entry, live) is False
+    assert await async_remove_config_entry_device(hass, entry, org) is False
+
+
+def test_client_permissions():
+    from custom_components.pangolin.const import required_actions
+
+    assert required_actions(["client_control"]) == [
+        "getOrg", "listSites", "listClients", "blockClient", "unblockClient",
+        "archiveClient", "unarchiveClient"]
+    assert "deleteClient" in required_actions(["client_delete"])
+    assert "resetSiteBandwidth" in required_actions(["reset_bandwidth"])

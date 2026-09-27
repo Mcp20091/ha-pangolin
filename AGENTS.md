@@ -15,7 +15,8 @@ A Home Assistant custom integration (domain `pangolin`, installed through HACS) 
 - Sites: online sensor, restart button, data in/out sensors
 - Public resources: health sensor, enable/disable switch
 - Private resources: enable/disable switch
-- An org hub device with a "Sites online" sensor listing every site
+- Clients (machine clients and user devices): online sensor, data in/out, blocked/archived switches, opt-in delete button
+- An org hub device with a "Sites online" sensor listing every site, an "API reachable" sensor and a "Reset bandwidth" button
 
 It's unofficial, and it was written with Claude. Keep the README's "Built with Claude" note and the credits.
 
@@ -24,12 +25,13 @@ It's unofficial, and it was written with Claude. Keep the README's "Built with C
 | File | Role |
 | --- | --- |
 | `custom_components/pangolin/api.py` | Async aiohttp client. Unwraps the `{data, success, error, message, status}` envelope and maps HTTP errors to `PangolinAuthError` (keeps `.status`, 401 or 403), `PangolinNotFoundError` (404) and `PangolinConnectionError`. |
-| `coordinator.py` | `DataUpdateCoordinator`. Builds `PangolinData(sites, resources, private_resources)` keyed by ID. `get_options()` resolves the stored feature list. |
-| `config_flow.py` | Setup: connect, then org, then features. Options: a menu with features or the permission check. |
+| `coordinator.py` | `DataUpdateCoordinator`. Builds `PangolinData(sites, resources, private_resources, clients)` keyed by ID. Tracks `api_reachable` (it pings only after a failed update). `get_options()` resolves the stored feature list. |
+| `config_flow.py` | Setup: connect, then org, then features. Reconfigure: URL, SSL check, optional new key. Options: a menu with features or the permission check. |
 | `entity.py` | Base entities (org, site, public resource, private resource) and `add_entities_dynamically()`, which adds entities for new IDs on each refresh. |
 | `binary_sensor.py`, `sensor.py`, `switch.py`, `button.py` | Platforms. Each checks `entry.runtime_data.options` to decide what to create. |
 | `const.py` | Feature keys, `resolve_features()`, and the permission map (`FEATURE_ACTIONS`, `ACTION_INFO`, `required_actions()`). |
-| `__init__.py` | Setup, reload on options change, and `_remove_disabled_features()` registry cleanup. |
+| `__init__.py` | Setup, reload on options change, `_remove_disabled_features()` registry cleanup, and `async_remove_config_entry_device()` (lets users delete devices whose object is gone from Pangolin). |
+| `diagnostics.py` | Diagnostics download. `TO_REDACT` removes keys, URLs, domains, names, addresses and user details. Add any new identifying field to it. |
 | `strings.json` / `translations/en.json` | UI text. Keep them **byte-identical**. |
 | `icons.json` | State-aware MDI icons, keyed by translation key |
 | `brand/` | `icon.png` 256 px, `icon@2x.png` 512 px, `logo.png`, `dark_logo.png`. HA 2026.x serves these directly from custom integrations. They're derived from Pangolin's own logo files. |
@@ -48,15 +50,21 @@ It's unofficial, and it was written with Claude. Keep the README's "Built with C
 - **Health values:** `healthy`, `degraded`, `offline`, `unknown`. Older builds said `unhealthy`, which is mapped to `offline`.
 - **Site restart:** `POST /site/{siteId}/restart` returns `data: null`. It's in the OpenAPI spec, but on current `main` it's only registered on the dashboard router, not the integration router. The permission (`restartSite`) also isn't offered in the dashboard's key editor. Expect 404 for API keys, and keep the friendly error in `button.py`.
 - **Permission (action) IDs** and dashboard labels: `getOrg` Get Organization, `listSites` List Sites, `listResources` List Resources, `updateResource` Update Resource, `listSiteResources` List Site Resources, `updateSiteResource` Update Site Resource, `restartSite` (no dashboard label). Key management needs `listApiKeyActions`, `setApiKeyActions` and `createApiKey`. `POST .../actions` **replaces** the whole set, and `actionIds` must be non-empty.
+- **Two kinds of API keys:** org keys (org Settings > API Keys) and root keys (Server Admin > API Keys). The dashboard never offers key-management permissions for org keys, so users with "everything ticked" on an org key still get 403 on key routes. Don't confuse either with **AI Gateway virtual API keys** (`/virtual-api-key...`), which are for the AI gateway and can't call the Integration API.
+- **Clients:** machine clients come from `GET /org/{orgId}/clients` (`data.clients`, only clients without a `userId`). User devices come from `GET /org/{orgId}/user-devices` (`data.devices`). Both need `listClients`, share the `clientId` namespace, and **hide blocked and archived clients unless `status` asks for them**, as a comma-separated list: clients take `active,blocked,archived`, and user devices also accept `pending,denied`. Actions: `POST /client/{id}/block|unblock|archive|unarchive`, and `DELETE /client/{id}` (permanent). Permission IDs: `blockClient`, `unblockClient`, `archiveClient`, `unarchiveClient`, `deleteClient`.
+- **Reset bandwidth:** `POST /org/{orgId}/reset-bandwidth` zeroes every site's `megabytesIn`/`megabytesOut`. Permission `resetSiteBandwidth`, labelled "Reset Organization Bandwidth". Traffic sensors are `TOTAL_INCREASING`, so HA handles the reset.
+- **Health check:** `GET /v1/` needs no auth and returns `{"message": "Healthy"}`, not the usual envelope. Use `PangolinClient.ping()`, not `_request()`.
+- **Not available to API keys:** site approve/reject, and site restart (see above). Health checks, access logs and certificates are only on the Enterprise router (`server/private/routers/integration.ts`).
 - `PUT /org/{orgId}/api-key` with `{name}` returns `apiKeyId` and `apiKey` (the secret). The full key is `f"{apiKeyId}.{apiKey}"`. New keys start with no permissions.
 
 ## Home Assistant conventions used here
 
 - `ConfigEntry.runtime_data` holds the coordinator. Entities use `has_entity_name` and `translation_key`, with names in `strings.json` and icons in `icons.json`.
-- **Unique IDs:** `{entry_id}_org_{key}`, `{entry_id}_site_{siteId}_{key}`, `{entry_id}_resource_{resourceId}_{key}`, `{entry_id}_private_{siteResourceId}_{key}`. Device identifiers follow the same pattern without `_{key}`. **`_remove_disabled_features()` matches on `_resource_`, `_private_` and the `_data_in`/`_data_out` suffixes**, so update it if you change these formats. Changing unique IDs orphans users' entities.
-- **Options** are stored as `{"features": [...]}`. A missing key means every feature is on, which keeps entries from before feature selection working. `resolve_features()` turns the list into per-area levels (`off`/`status`/`control`). Control implies status: a switch replaces the read-only "Enabled" binary sensor.
+- **Unique IDs:** `{entry_id}_org_{key}`, `{entry_id}_site_{siteId}_{key}`, `{entry_id}_resource_{resourceId}_{key}`, `{entry_id}_private_{siteResourceId}_{key}`, `{entry_id}_client_{clientId}_{key}`. Device identifiers follow the same pattern without `_{key}`. **`_remove_disabled_features()` matches on `_client_` (checked first, because client data sensors and buttons share suffixes with sites), `_resource_`, `_private_`, `_org_reset_bandwidth` and the `_data_in`/`_data_out` suffixes**, and `async_remove_config_entry_device()` parses the same identifiers. Update both if you change these formats. Changing unique IDs orphans users' entities.
+- **Options** are stored as `{"features": [...]}`. A missing key means `DEFAULT_FEATURES` (everything except `DEFAULT_OFF_FEATURES`, currently client delete). New features are off for existing entries until the user ticks them. Permanent actions go in `DEFAULT_OFF_FEATURES`. Client delete implies client status, because the button lives on the client device. `resolve_features()` turns the list into per-area levels (`off`/`status`/`control`). Control implies status: a switch replaces the read-only "Enabled" binary sensor.
 - Public and private resource devices use `entry_type=DeviceEntryType.SERVICE`, so the device list shows them with Home Assistant's service icon. Sites and the org stay normal devices. That icon is the only per-device visual an integration can influence.
-- Private resources are optional at runtime. A 403 or 404 on the list turns them off for that session with a warning, instead of breaking setup or forcing re-authentication.
+- Actions use `entity.run_action()`, which turns a 403 into "the API key needs the X permission".
+- Private resources and clients are optional at runtime. A 403 or 404 on the list turns them off for that session with a warning, instead of breaking setup or forcing re-authentication.
 - **Never store the root key** entered in the permission check. It stays on the flow instance only. A test asserts this.
 
 ## Validation gotchas (hassfest)

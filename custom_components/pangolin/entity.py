@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import PangolinAuthError, PangolinError
 from .const import CONF_ORG_ID, DOMAIN
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 
@@ -125,18 +127,56 @@ class PangolinPrivateResourceEntity(CoordinatorEntity[PangolinCoordinator]):
         )
 
 
+class PangolinClientEntity(CoordinatorEntity[PangolinCoordinator]):
+    """Entity tied to a Pangolin client (machine client or user device)."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self, coordinator: PangolinCoordinator, client_id: int, key: str
+    ) -> None:
+        super().__init__(coordinator)
+        self.client_id = client_id
+        entry_id = coordinator.config_entry.entry_id
+        self._attr_unique_id = f"{entry_id}_client_{client_id}_{key}"
+        client = self.client
+        if client.get("kind") == "user":
+            model = "User device"
+            if client.get("deviceModel"):
+                model = f"User device ({client['deviceModel']})"
+        else:
+            model = "Machine client"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry_id}_client_{client_id}")},
+            name=f"Pangolin {client.get('name', client_id)}",
+            manufacturer="Pangolin",
+            model=model,
+            sw_version=client.get("olmVersion"),
+        )
+
+    @property
+    def client(self) -> dict[str, Any]:
+        return self.coordinator.data.clients.get(self.client_id, {})
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.client_id in self.coordinator.data.clients
+
+
 def add_entities_dynamically(
     entry: PangolinConfigEntry,
     async_add_entities: Callable[[Iterable[Entity]], None],
     site_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
     resource_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
     private_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
+    client_factory: Callable[[PangolinCoordinator, int], list[Entity]] | None = None,
 ) -> None:
     """Add entities now and whenever new sites or resources appear."""
     coordinator = entry.runtime_data
     known_sites: set[int] = set()
     known_resources: set[int] = set()
     known_private: set[int] = set()
+    known_clients: set[int] = set()
 
     def _check() -> None:
         new: list[Entity] = []
@@ -152,8 +192,26 @@ def add_entities_dynamically(
             for res_id in coordinator.data.private_resources.keys() - known_private:
                 known_private.add(res_id)
                 new.extend(private_factory(coordinator, res_id))
+        if client_factory:
+            for client_id in coordinator.data.clients.keys() - known_clients:
+                known_clients.add(client_id)
+                new.extend(client_factory(coordinator, client_id))
         if new:
             async_add_entities(new)
 
     _check()
     entry.async_on_unload(coordinator.async_add_listener(_check))
+
+
+async def run_action(action: Awaitable[None], failure: str, permission: str) -> None:
+    """Run a Pangolin call, turning failures into readable errors."""
+    try:
+        await action
+    except PangolinAuthError as err:
+        if err.status == 403:
+            raise HomeAssistantError(
+                f"{failure}: the API key needs the {permission} permission in Pangolin."
+            ) from err
+        raise HomeAssistantError(f"{failure}: {err}") from err
+    except PangolinError as err:
+        raise HomeAssistantError(f"{failure}: {err}") from err

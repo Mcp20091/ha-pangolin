@@ -18,11 +18,12 @@ from .api import (
     PangolinNotFoundError,
 )
 from .const import (
-    ALL_FEATURES,
+    DEFAULT_FEATURES,
     CONF_FEATURES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LEVEL_OFF,
+    OPT_CLIENTS,
     OPT_PRIVATE,
     OPT_PUBLIC,
     resolve_features,
@@ -34,8 +35,8 @@ type PangolinConfigEntry = ConfigEntry[PangolinCoordinator]
 
 
 def get_options(entry: ConfigEntry) -> dict[str, Any]:
-    """Resolved features; entries from before feature selection get everything."""
-    return resolve_features(entry.options.get(CONF_FEATURES, ALL_FEATURES))
+    """Resolved features; entries from before feature selection get the defaults."""
+    return resolve_features(entry.options.get(CONF_FEATURES, DEFAULT_FEATURES))
 
 
 @dataclass
@@ -45,6 +46,7 @@ class PangolinData:
     sites: dict[int, dict[str, Any]] = field(default_factory=dict)
     resources: dict[int, dict[str, Any]] = field(default_factory=dict)
     private_resources: dict[int, dict[str, Any]] = field(default_factory=dict)
+    clients: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 class PangolinCoordinator(DataUpdateCoordinator[PangolinData]):
@@ -65,6 +67,10 @@ class PangolinCoordinator(DataUpdateCoordinator[PangolinData]):
         self.client = client
         self.options = get_options(entry)
         self._private_supported = self.options[OPT_PRIVATE] != LEVEL_OFF
+        self._clients_supported = self.options[OPT_CLIENTS] != LEVEL_OFF
+        # False only when Pangolin itself doesn't answer, as opposed to the
+        # key being rejected.
+        self.api_reachable = True
 
     async def _async_update_data(self) -> PangolinData:
         try:
@@ -74,14 +80,20 @@ class PangolinCoordinator(DataUpdateCoordinator[PangolinData]):
                 if self.options[OPT_PUBLIC] != LEVEL_OFF
                 else []
             )
+            private_resources = await self._fetch_private_resources()
+            clients = await self._fetch_clients()
         except PangolinAuthError as err:
+            self.api_reachable = True
             raise ConfigEntryAuthFailed(str(err)) from err
         except PangolinError as err:
+            self.api_reachable = await self.client.ping()
             raise UpdateFailed(str(err)) from err
+        self.api_reachable = True
         return PangolinData(
             sites={s["siteId"]: s for s in sites},
             resources={r["resourceId"]: r for r in resources},
-            private_resources=await self._fetch_private_resources(),
+            private_resources=private_resources,
+            clients=clients,
         )
 
     async def _fetch_private_resources(self) -> dict[int, dict[str, Any]]:
@@ -95,6 +107,16 @@ class PangolinCoordinator(DataUpdateCoordinator[PangolinData]):
             _LOGGER.warning("Private resources unavailable, skipping them: %s", err)
             self._private_supported = False
             return {}
-        except PangolinError as err:
-            raise UpdateFailed(str(err)) from err
         return {r["siteResourceId"]: r for r in items}
+
+    async def _fetch_clients(self) -> dict[int, dict[str, Any]]:
+        """Clients are optional too: keys without List Clients get none."""
+        if not self._clients_supported:
+            return {}
+        try:
+            items = await self.client.list_clients()
+        except (PangolinAuthError, PangolinNotFoundError) as err:
+            _LOGGER.warning("Clients unavailable, skipping them: %s", err)
+            self._clients_supported = False
+            return {}
+        return {c["clientId"]: c for c in items}

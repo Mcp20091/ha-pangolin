@@ -39,12 +39,18 @@ from .const import (
     ACTION_INFO,
     ALL_FEATURES,
     CONF_FEATURES,
+    DEFAULT_FEATURES,
+    DEFAULT_OFF_FEATURES,
     CONF_ORG_ID,
     DOMAIN,
+    FEATURE_CLIENT_CONTROL,
+    FEATURE_CLIENT_DELETE,
+    FEATURE_CLIENT_STATUS,
     FEATURE_PRIVATE_CONTROL,
     FEATURE_PRIVATE_STATUS,
     FEATURE_PUBLIC_CONTROL,
     FEATURE_PUBLIC_STATUS,
+    OPT_CLIENTS,
     OPT_PRIVATE,
     OPT_PUBLIC,
     required_actions,
@@ -56,6 +62,9 @@ FEATURE_NEEDS = {
     FEATURE_PUBLIC_CONTROL: OPT_PUBLIC,
     FEATURE_PRIVATE_STATUS: OPT_PRIVATE,
     FEATURE_PRIVATE_CONTROL: OPT_PRIVATE,
+    FEATURE_CLIENT_STATUS: OPT_CLIENTS,
+    FEATURE_CLIENT_CONTROL: OPT_CLIENTS,
+    FEATURE_CLIENT_DELETE: OPT_CLIENTS,
 }
 
 URL_SUFFIX = "/v1"
@@ -63,12 +72,13 @@ CONF_ROOT_API_KEY = "root_api_key"
 CONF_APPLY = "apply"
 NEW_KEY_NAME = "Home Assistant (least privilege)"
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+URL_SELECTOR = TextSelector(
+    TextSelectorConfig(type=TextSelectorType.URL, suffix=URL_SUFFIX)
+)
 
 USER_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_URL): TextSelector(
-            TextSelectorConfig(type=TextSelectorType.URL, suffix=URL_SUFFIX)
-        ),
+        vol.Required(CONF_URL): URL_SELECTOR,
         vol.Required(CONF_API_KEY): PASSWORD_SELECTOR,
         vol.Optional(CONF_VERIFY_SSL, default=True): bool,
     }
@@ -114,16 +124,24 @@ class _FeatureStep:
     def _unavailable_text(self) -> str:
         missing = [
             label
-            for opt, label in ((OPT_PUBLIC, "public"), (OPT_PRIVATE, "private"))
+            for opt, label in (
+                (OPT_PUBLIC, "Public resource"),
+                (OPT_PRIVATE, "Private resource"),
+                (OPT_CLIENTS, "Client"),
+            )
             if not self._access[opt]
         ]
         if not missing:
             return "None. This key can read everything the integration uses."
         return (
-            f"{' and '.join(missing).capitalize()} resource features are hidden "
-            "because this key can't list them (missing permission, or your "
-            "Pangolin version doesn't support them)."
+            f"{', '.join(missing)} features are hidden because this key can't "
+            "list them (missing permission, or your Pangolin version doesn't "
+            "support them)."
         )
+
+    def _default_selection(self) -> list[str]:
+        """Everything the key can use, except permanent actions."""
+        return [f for f in self._capable() if f not in DEFAULT_OFF_FEATURES]
 
     def _show_features(self, selected: list[str]) -> ConfigFlowResult:
         capable = self._capable()
@@ -232,7 +250,7 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             if (error := await self._validate_org(data)) is None:
                 self._data = data
-                return self._show_features(self._capable())
+                return self._show_features(self._default_selection())
             errors["base"] = "org_denied" if error == "invalid_auth" else error
 
         if self._orgs:
@@ -268,7 +286,7 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is None:
-            return self._show_features(self._capable())
+            return self._show_features(self._default_selection())
         capable = self._capable()
         return self.async_create_entry(
             title=self._title,
@@ -278,6 +296,51 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
                     f for f in user_input.get(CONF_FEATURES, []) if f in capable
                 ]
             },
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the address, SSL check or API key without re-adding."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            data = {
+                **entry.data,
+                CONF_URL: normalize_url(user_input[CONF_URL]),
+                CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL, True),
+            }
+            if new_key := (user_input.get(CONF_API_KEY) or "").strip():
+                data[CONF_API_KEY] = new_key
+            unique_id = f"{data[CONF_URL]}|{data[CONF_ORG_ID]}"
+            other = self.hass.config_entries.async_entry_for_domain_unique_id(
+                DOMAIN, unique_id
+            )
+            if other is not None and other.entry_id != entry.entry_id:
+                return self.async_abort(reason="already_configured")
+            if (error := await self._validate_org(data)) is None:
+                return self.async_update_reload_and_abort(
+                    entry, unique_id=unique_id, data=data
+                )
+            errors["base"] = error
+
+        current = user_input or {
+            CONF_URL: _url_for_display(entry.data[CONF_URL]),
+            CONF_VERIFY_SSL: entry.data.get(CONF_VERIFY_SSL, True),
+        }
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_URL): URL_SELECTOR,
+                vol.Optional(CONF_API_KEY): PASSWORD_SELECTOR,
+                vol.Optional(CONF_VERIFY_SSL, default=True): bool,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {k: v for k, v in current.items() if k != CONF_API_KEY}
+            ),
+            errors=errors,
         )
 
     async def async_step_reauth(
@@ -341,7 +404,7 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
                 ).probe_access()
             except PangolinError as err:
                 return self.async_abort(reason=_error_key(err))
-            current = self.config_entry.options.get(CONF_FEATURES, ALL_FEATURES)
+            current = self.config_entry.options.get(CONF_FEATURES, DEFAULT_FEATURES)
             return self._show_features(list(current))
         capable = self._capable()
         return self.async_create_entry(
@@ -382,7 +445,7 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
                 vol.Optional(CONF_ROOT_API_KEY): PASSWORD_SELECTOR,
             }
         )
-        current = self.config_entry.options.get(CONF_FEATURES, ALL_FEATURES)
+        current = self.config_entry.options.get(CONF_FEATURES, DEFAULT_FEATURES)
         return self.async_show_form(
             step_id="permissions",
             data_schema=self.add_suggested_values_to_schema(

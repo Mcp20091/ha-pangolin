@@ -1,6 +1,6 @@
 {
   "domain": "pangolin",
-  "name": "Pangolin",
+  "name": "Pangolin (Unofficial)",
   "codeowners": [
     "@Mcp20091"
   ],
@@ -10,5 +10,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Mcp20091/ha-pangolin/issues",
   "requirements": [],
-  "version": "0.5.1"
+  "version": "0.6.0"
 }

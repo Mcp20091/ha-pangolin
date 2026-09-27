@@ -18,6 +18,18 @@
         "state": {
           "on": "mdi:lan-connect"
         }
+      },
+      "api_reachable": {
+        "default": "mdi:api-off",
+        "state": {
+          "on": "mdi:api"
+        }
+      },
+      "client_online": {
+        "default": "mdi:laptop-off",
+        "state": {
+          "on": "mdi:laptop"
+        }
       }
     },
     "sensor": {
@@ -52,6 +64,26 @@
         "state": {
           "on": "mdi:lan-connect"
         }
+      },
+      "client_blocked": {
+        "default": "mdi:check-circle-outline",
+        "state": {
+          "on": "mdi:cancel"
+        }
+      },
+      "client_archived": {
+        "default": "mdi:archive-off-outline",
+        "state": {
+          "on": "mdi:archive"
+        }
+      }
+    },
+    "button": {
+      "client_delete": {
+        "default": "mdi:delete-forever"
+      },
+      "reset_bandwidth": {
+        "default": "mdi:restore"
       }
     }
   }

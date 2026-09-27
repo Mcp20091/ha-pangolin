@@ -6,7 +6,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import OPT_PRIVATE, OPT_PUBLIC, PAGE_SIZE
+from .const import OPT_CLIENTS, OPT_PRIVATE, OPT_PUBLIC, PAGE_SIZE
 
 
 class PangolinError(Exception):
@@ -100,13 +100,29 @@ class PangolinClient:
         except (aiohttp.ClientError, TimeoutError) as err:
             raise PangolinConnectionError(str(err)) from err
 
-    async def _get_all(self, path: str, key: str) -> list[dict[str, Any]]:
+    async def ping(self) -> bool:
+        """Whether the API answers its unauthenticated health check."""
+        try:
+            async with self._session.get(
+                f"{self._base_url}/",
+                ssl=self._ssl,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                return resp.status == 200
+        except (aiohttp.ClientError, TimeoutError):
+            return False
+
+    async def _get_all(
+        self, path: str, key: str, extra: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """Walk every page of a paginated list endpoint."""
         items: list[dict[str, Any]] = []
         page = 1
         while True:
             data = await self._request(
-                "GET", path, params={"page": page, "pageSize": PAGE_SIZE}
+                "GET",
+                path,
+                params={"page": page, "pageSize": PAGE_SIZE, **(extra or {})},
             )
             batch = (data or {}).get(key) or []
             items.extend(batch)
@@ -169,6 +185,7 @@ class PangolinClient:
         paths = {
             OPT_PUBLIC: f"/org/{self._org_id}/resources",
             OPT_PRIVATE: f"/org/{self._org_id}/private-resources",
+            OPT_CLIENTS: f"/org/{self._org_id}/clients",
         }
         access: dict[str, bool] = {}
         for option, path in paths.items():
@@ -211,3 +228,44 @@ class PangolinClient:
         await self._request(
             "POST", f"/resource/{resource_id}", json={"enabled": enabled}
         )
+
+    async def list_clients(self) -> list[dict[str, Any]]:
+        """Return machine clients and user devices, including blocked/archived.
+
+        Both lists hide blocked and archived clients unless asked for them.
+        Each item gets a "kind" of "machine" or "user".
+        """
+        machines = await self._get_all(
+            f"/org/{self._org_id}/clients",
+            "clients",
+            {"status": "active,blocked,archived"},
+        )
+        try:
+            users = await self._get_all(
+                f"/org/{self._org_id}/user-devices",
+                "devices",
+                {"status": "active,pending,denied,blocked,archived"},
+            )
+        except PangolinNotFoundError:
+            users = []  # older servers without the user-devices endpoint
+        return [{**c, "kind": "machine"} for c in machines] + [
+            {**c, "kind": "user"} for c in users
+        ]
+
+    async def set_client_blocked(self, client_id: int, blocked: bool) -> None:
+        """Block or unblock a client."""
+        action = "block" if blocked else "unblock"
+        await self._request("POST", f"/client/{client_id}/{action}")
+
+    async def set_client_archived(self, client_id: int, archived: bool) -> None:
+        """Archive or unarchive a client."""
+        action = "archive" if archived else "unarchive"
+        await self._request("POST", f"/client/{client_id}/{action}")
+
+    async def delete_client(self, client_id: int) -> None:
+        """Permanently delete a client."""
+        await self._request("DELETE", f"/client/{client_id}")
+
+    async def reset_bandwidth(self) -> None:
+        """Zero the data in/out counters of every site in the organization."""
+        await self._request("POST", f"/org/{self._org_id}/reset-bandwidth")
