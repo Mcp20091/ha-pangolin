@@ -10,8 +10,9 @@ Usage (Python 3.10+, no extra packages): double-click it, or run
     python scripts/api_fields.py
 
 It asks for the Integration API address, organization ID and API key (the key
-isn't echoed or saved), then saves the result as api-fields.json next to this
-script and waits for Enter before closing. Endpoints the key can't read are
+isn't echoed or saved) and checks them first, offering a retry if they don't
+work. Only then does it save the result as api-fields.json next to this script.
+It waits for Enter before closing. Endpoints the key can't read are
 reported as errors and skipped.
 """
 
@@ -73,7 +74,7 @@ class Api:
         if not base.endswith("/v1"):
             base += "/v1"
         if urllib.parse.urlparse(base).scheme not in ("http", "https"):
-            sys.exit("The address must start with http:// or https://")
+            raise ValueError("The address must start with http:// or https://")
         self.base = base
         self.headers = {"Authorization": f"Bearer {key}"}
         self.context = None if verify else ssl._create_unverified_context()  # noqa: S323
@@ -87,36 +88,93 @@ class Api:
             return json.load(resp).get("data")
 
 
+def call(api: Api, path: str, **params: Any) -> tuple[Any, str | None]:
+    """Return (data, None) on success or (None, "error ...")."""
+    try:
+        return api.get(path, **params), None
+    except urllib.error.HTTPError as err:
+        return None, f"error {err.code}"
+    except (urllib.error.URLError, TimeoutError, ValueError) as err:
+        return None, f"error {type(err).__name__}"
+
+
 def ask(prompt: str) -> str:
-    # Prompts go to stderr so the report alone can be saved with "> file".
+    # Prompts go to stderr so they never end up in the saved report.
     print(prompt, end="", file=sys.stderr, flush=True)
     return input()
 
 
-def main() -> None:
-    print("Integration API address. Type your domain, or a full http(s):// address if the API isn't on api.<domain>.", file=sys.stderr)
-    base = ask("https://api.")
-    org = ask("Organization ID: ").strip()
-    key = getpass.getpass("API key (not shown): ", stream=sys.stderr).strip()
-    verify = ask("Verify SSL certificate? [Y/n]: ").strip().lower() != "n"
-    api = Api(base, key, verify)
-    report: dict[str, Any] = {}
+def explain(error: str, base: str, org: str) -> tuple[str, bool]:
+    """Say what went wrong, and whether carrying on could still be useful."""
+    if error == "error 401":
+        return "The API key was rejected. Check that you copied the whole key.", False
+    if error == "error 403":
+        return (
+            f"The key was accepted, but it can't read organization '{org}'. Check "
+            "the organization ID, or give the key the Get Organization permission.",
+            True,
+        )
+    if error == "error 404":
+        return f"Nothing at {base} answered like the Pangolin Integration API. Check the address.", False
+    reason = error.removeprefix("error ")
+    return (
+        f"Couldn't reach {base} ({reason}). Check the address, and that the "
+        "Integration API is enabled and reachable.",
+        False,
+    )
 
-    def call(path: str, **params: Any) -> tuple[Any, str | None]:
-        """Return (data, None) on success or (None, "error ...")."""
+
+def connect() -> tuple[Api, str, Any, str | None] | None:
+    """Ask for the details until they work. None means the user quit."""
+    while True:
+        print(
+            "Integration API address. Type your domain, or a full http(s):// "
+            "address if the API isn't on api.<domain>.",
+            file=sys.stderr,
+        )
+        base = ask("https://api.")
+        org = ask("Organization ID: ").strip()
+        key = getpass.getpass("API key (not shown): ", stream=sys.stderr).strip()
+        verify = ask("Verify SSL certificate? [Y/n]: ").strip().lower() != "n"
+
+        can_continue = False
+        error: str | None = None
+        org_data: Any = None
         try:
-            return api.get(path, **params), None
-        except urllib.error.HTTPError as err:
-            return None, f"error {err.code}"
-        except (urllib.error.URLError, TimeoutError, ValueError) as err:
-            return None, f"error {type(err).__name__}"
+            api = Api(base, key, verify)
+        except ValueError as err:
+            message = str(err)
+        else:
+            if not key or not org:
+                message = "The organization ID and API key can't be empty."
+            else:
+                org_data, error = call(api, f"/org/{org}")
+                if error is None:
+                    return api, org, org_data, None
+                message, can_continue = explain(error, api.base, org)
+
+        print(f"\n{message}", file=sys.stderr)
+        options = "[R]etry, [C]ontinue anyway, [Q]uit" if can_continue else "[R]etry, [Q]uit"
+        choice = ask(f"{options} (Enter = retry): ").strip().lower()
+        if choice == "q":
+            return None
+        if choice == "c" and can_continue:
+            return api, org, org_data, error
+        print(file=sys.stderr)
+
+
+def main() -> None:
+    connected = connect()
+    if connected is None:
+        print("\nNothing was saved.", file=sys.stderr)
+        return
+    api, org, org_data, org_error = connected
+    report: dict[str, Any] = {"GET /org/{orgId}": org_error or shape(org_data)}
 
     def fetch(label: str, path: str, **params: Any) -> Any:
-        data, error = call(path, **params)
+        data, error = call(api, path, **params)
         report[label] = error if error else shape(data)
         return data
-
-    fetch("GET /org/{orgId}", f"/org/{org}")
 
     lists = [
         ("sites", f"/org/{org}/sites", "sites", "siteId", "/site/{}", {}),
@@ -142,7 +200,7 @@ def main() -> None:
         last_error: str | None = None
         found: list[Any] = []
         for item_id in ids:
-            detail_data, error = call(detail.format(item_id))
+            detail_data, error = call(api, detail.format(item_id))
             if error:
                 last_error = error
                 continue
@@ -163,8 +221,11 @@ if __name__ == "__main__":
     try:
         main()
     except (KeyboardInterrupt, EOFError):
-        pass
+        print("\nNothing was saved.", file=sys.stderr)
     except Exception as err:  # noqa: BLE001 - show any failure before the window closes
-        print(f"\nSomething went wrong: {err}", file=sys.stderr)
+        print(f"\nSomething went wrong: {err}\nNothing was saved.", file=sys.stderr)
     # Double-clicked scripts get their own window; keep it open to read.
-    ask("\nPress Enter to close.")
+    try:
+        ask("\nPress Enter to close.")
+    except (KeyboardInterrupt, EOFError):
+        pass
