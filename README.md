@@ -25,14 +25,37 @@ New sites and resources are picked up automatically. Data refreshes every 30 sec
 
 ## Pangolin requirements
 
-1. Enable the Integration API (self-hosted) by setting `flags.enable_integration_api: true` in Pangolin's `config.yml`, then route it so Home Assistant can reach it (it listens on port 3003 by default). See the Pangolin docs: [Integration API](https://docs.pangolin.net/self-host/advanced/integration-api).
-2. In the Pangolin dashboard, create an organization API key with these permissions
-   - Get Organization
-   - List Sites
-   - Restart Site (for the restart buttons)
-   - List Resources
-   - Update Resource
-   - List Site Resources and Update Site Resource (for private resources; optional)
+> **Source:** steps 1 to 3 summarize Pangolin's official [Enable Integration API](https://docs.pangolin.net/self-host/advanced/integration-api) guide as of **September 26, 2026**. Pangolin changes over time, so check that page for the current instructions and exact config. If this summary and the guide disagree, follow the guide.
+
+### 1. Enable the Integration API (self-hosted)
+
+In Pangolin's `config.yml`, set `enable_integration_api: true` under `flags`. The API listens on port `3003` by default. To use a different port, set `integration_port` under `server`.
+
+### 2. Route it through Traefik
+
+The guide adds the following to `config/traefik/dynamic_config.yml`, for a hostname such as `api.example.com`:
+- A router on the `web` entry point that redirects to HTTPS. It also uses the `badger` middleware if you run Badger 1.3.0 or later with it enabled.
+- A router on the `websecure` entry point with TLS from your certificate resolver.
+- A service that forwards to `http://pangolin:3003`.
+
+Copy the exact YAML from the [guide](https://docs.pangolin.net/self-host/advanced/integration-api#configure-traefik-routing), and make sure the hostname resolves to your Pangolin server.
+
+### 3. Check that it's reachable
+
+Open `https://api.example.com/v1/docs`. You should see Pangolin's Swagger UI. The API itself is at `https://api.example.com/v1`. In Home Assistant, enter `https://api.example.com`, and the integration adds `/v1` for you.
+
+### 4. Create an API key
+
+In the Pangolin dashboard, create an **organization** API key with the permissions for the features you want:
+
+- Get Organization and List Sites (always)
+- List Resources, plus Update Resource for the switches (public resources)
+- List Site Resources, plus Update Site Resource for the switches (private resources)
+- Restart Site (restart buttons; see the note below)
+
+The full per-feature table is under [Permission check](#permission-check-advanced). Once the integration is set up, that tool can work the list out, or adjust the key for you.
+
+A root key also works and lets setup list your organizations, but it can do anything on the server. An org key limited to the permissions above is safer.
 
 Private resources are optional. If the key can't list them, or your Pangolin version doesn't have the private resources endpoint, the integration skips them and logs a warning. Grant the permission and reload the integration to add them later.
 
