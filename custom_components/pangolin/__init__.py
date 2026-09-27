@@ -22,6 +22,7 @@ from .const import (
     LEVEL_OFF,
     LEVEL_STATUS,
     OPT_CLIENT_DELETE,
+    OPT_CLIENT_LAST_SEEN,
     OPT_CLIENTS,
     OPT_PRIVATE,
     OPT_PUBLIC,
@@ -132,6 +133,8 @@ def _remove_disabled_features(hass: HomeAssistant, entry: PangolinConfigEntry) -
                 wanted = options[OPT_CLIENT_DELETE]
             elif ent.domain == Platform.SWITCH:
                 wanted = options[OPT_CLIENTS] == LEVEL_CONTROL
+            elif uid.endswith("_last_seen"):
+                wanted = options[OPT_CLIENT_LAST_SEEN]
             else:
                 wanted = options[OPT_CLIENTS] != LEVEL_OFF
         elif "_resource_" in uid:

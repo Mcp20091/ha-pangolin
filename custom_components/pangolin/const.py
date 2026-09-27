@@ -23,6 +23,7 @@ FEATURE_CLIENT_STATUS = "client_status"
 FEATURE_CLIENT_CONTROL = "client_control"
 FEATURE_CLIENT_DELETE = "client_delete"
 FEATURE_RESET_BANDWIDTH = "reset_bandwidth"
+FEATURE_CLIENT_LAST_SEEN = "client_last_seen"
 ALL_FEATURES = [
     FEATURE_PUBLIC_STATUS,
     FEATURE_PUBLIC_CONTROL,
@@ -34,6 +35,7 @@ ALL_FEATURES = [
     FEATURE_CLIENT_CONTROL,
     FEATURE_CLIENT_DELETE,
     FEATURE_RESET_BANDWIDTH,
+    FEATURE_CLIENT_LAST_SEEN,
 ]
 # Features that existed before v0.6.0. Entries saved without a known-features
 # list have seen exactly these, so anything newer gets announced.
@@ -47,9 +49,13 @@ LEGACY_FEATURES = [
 ]
 # Stored beside the chosen features: every feature the user has been offered.
 CONF_KNOWN_FEATURES = "known_features"
-# Unticked until the user opts in: permanent actions, and site restart, which
-# most Pangolin versions don't allow for API keys.
-DEFAULT_OFF_FEATURES = {FEATURE_CLIENT_DELETE, FEATURE_SITE_RESTART}
+# Unticked until the user opts in: permanent actions, site restart (most
+# Pangolin versions don't allow it for API keys) and experimental features.
+DEFAULT_OFF_FEATURES = {
+    FEATURE_CLIENT_DELETE,
+    FEATURE_SITE_RESTART,
+    FEATURE_CLIENT_LAST_SEEN,
+}
 DEFAULT_FEATURES = [f for f in ALL_FEATURES if f not in DEFAULT_OFF_FEATURES]
 
 # Pangolin API key permissions (action IDs) each feature needs.
@@ -71,6 +77,7 @@ FEATURE_ACTIONS = {
     ],
     FEATURE_CLIENT_DELETE: ["listClients", "deleteClient"],
     FEATURE_RESET_BANDWIDTH: ["resetSiteBandwidth"],
+    FEATURE_CLIENT_LAST_SEEN: ["listClients"],
 }
 # Labels as the Pangolin dashboard shows them, plus what each is used for.
 ACTION_INFO = {
@@ -114,6 +121,7 @@ OPT_TRAFFIC = "site_traffic"
 OPT_CLIENTS = "clients"
 OPT_CLIENT_DELETE = "client_delete"
 OPT_RESET_BANDWIDTH = "reset_bandwidth"
+OPT_CLIENT_LAST_SEEN = "client_last_seen"
 
 LEVEL_OFF = "off"
 LEVEL_STATUS = "status"
@@ -137,14 +145,21 @@ def resolve_features(features: Iterable[str]) -> dict[str, Any]:
         OPT_PRIVATE: _level(f, FEATURE_PRIVATE_STATUS, FEATURE_PRIVATE_CONTROL),
         OPT_RESTART: FEATURE_SITE_RESTART in f,
         OPT_TRAFFIC: FEATURE_SITE_TRAFFIC in f,
-        # Delete buttons live on client devices, so they bring status along.
+        # Delete buttons and last seen live on client devices, so they bring
+        # status along.
         OPT_CLIENTS: _level(
-            f | ({FEATURE_CLIENT_STATUS} if FEATURE_CLIENT_DELETE in f else set()),
+            f
+            | (
+                {FEATURE_CLIENT_STATUS}
+                if f & {FEATURE_CLIENT_DELETE, FEATURE_CLIENT_LAST_SEEN}
+                else set()
+            ),
             FEATURE_CLIENT_STATUS,
             FEATURE_CLIENT_CONTROL,
         ),
         OPT_CLIENT_DELETE: FEATURE_CLIENT_DELETE in f,
         OPT_RESET_BANDWIDTH: FEATURE_RESET_BANDWIDTH in f,
+        OPT_CLIENT_LAST_SEEN: FEATURE_CLIENT_LAST_SEEN in f,
     }
 
 # Features that only work when the key can read the matching list.
@@ -156,6 +171,7 @@ FEATURE_NEEDS = {
     FEATURE_CLIENT_STATUS: OPT_CLIENTS,
     FEATURE_CLIENT_CONTROL: OPT_CLIENTS,
     FEATURE_CLIENT_DELETE: OPT_CLIENTS,
+    FEATURE_CLIENT_LAST_SEEN: OPT_CLIENTS,
 }
 
 

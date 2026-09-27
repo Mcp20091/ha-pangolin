@@ -644,7 +644,7 @@ async def test_update_announces_new_features(hass, aioclient_mock, hass_client):
     # Saved by an earlier version: chose features but has no known-features list.
     entry = await setup_entry(hass, features=LEGACY)
     issue_id = (f"new_features_{entry.entry_id}_"
-                "client_status-client_control-client_delete-reset_bandwidth")
+                "client_status-client_control-client_delete-reset_bandwidth-client_last_seen")
     assert pangolin_issues(hass) == {issue_id}
 
     client = await hass_client()
@@ -721,7 +721,7 @@ async def test_site_restart_off_by_default(hass, aioclient_mock):
 
 async def test_last_seen_for_user_devices_only(hass, aioclient_mock):
     mock_api(aioclient_mock)
-    await setup_entry(hass)
+    await setup_entry(hass, features=["client_status", "client_last_seen"])
     assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:00:00+00:00"
     assert hass.states.get("sensor.pangolin_backup_box_last_seen") is None
 
@@ -730,7 +730,7 @@ async def test_last_seen_steps_while_online(hass, aioclient_mock):
     from custom_components.pangolin.coordinator import PangolinData
 
     mock_api(aioclient_mock)
-    entry = await setup_entry(hass)
+    entry = await setup_entry(hass, features=["client_last_seen"])
     coordinator = entry.runtime_data
     base = 1790467200
 
@@ -750,3 +750,10 @@ async def test_last_seen_steps_while_online(hass, aioclient_mock):
     push(base + 420, False)  # went offline: the exact last ping is published
     await hass.async_block_till_done()
     assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:07:00+00:00"
+
+
+async def test_last_seen_off_by_default(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    assert hass.states.get("binary_sensor.pangolin_laptop_online") is not None
+    assert hass.states.get("sensor.pangolin_laptop_last_seen") is None

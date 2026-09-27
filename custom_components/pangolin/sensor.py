@@ -14,7 +14,13 @@ from homeassistant.const import EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LEVEL_OFF, OPT_CLIENTS, OPT_PUBLIC, OPT_TRAFFIC
+from .const import (
+    LEVEL_OFF,
+    OPT_CLIENT_LAST_SEEN,
+    OPT_CLIENTS,
+    OPT_PUBLIC,
+    OPT_TRAFFIC,
+)
 from .coordinator import PangolinConfigEntry, PangolinCoordinator
 from .entity import (
     PangolinClientEntity,
@@ -59,10 +65,11 @@ async def async_setup_entry(
                 lambda c, cid: [
                     PangolinClientTraffic(c, cid, "megabytesIn", "data_in"),
                     PangolinClientTraffic(c, cid, "megabytesOut", "data_out"),
-                    # Only user devices report when they were last seen.
+                    # Experimental; only user devices report when last seen.
                     *(
                         [PangolinClientLastSeen(c, cid)]
-                        if c.data.clients[cid].get("kind") == "user"
+                        if options[OPT_CLIENT_LAST_SEEN]
+                        and c.data.clients[cid].get("kind") == "user"
                         else []
                     ),
                 ]

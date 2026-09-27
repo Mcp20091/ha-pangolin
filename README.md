@@ -13,7 +13,7 @@ Your organization gets a hub device with
 
 Each Pangolin site becomes a device with
 - Online (binary sensor, connectivity)
-- Restart (button, off by default, Newt sites only): tells the site's Newt connector to restart its WireGuard tunnel, a quick reconnect for a stuck site. Nothing visible happens when it works. Most Pangolin versions don't allow this for API keys, so it usually shows an error instead.
+- Restart (button, **experimental, off by default**, Newt sites only): tells the site's Newt connector to restart its WireGuard tunnel, a quick reconnect for a stuck site. Nothing visible happens when it works. Most Pangolin versions don't allow this for API keys, so it usually shows an error instead.
 - Data in / Data out (diagnostic sensors, MB)
 
 Each public resource becomes a device with
@@ -26,7 +26,7 @@ Each private resource becomes a device with
 Each client (machine client or user device running the Pangolin client) becomes a device with
 - Online (binary sensor, connectivity), with kind, user, version and device model as attributes. It's handy for presence, e.g. "my laptop is connected through Pangolin".
 - Data in / Data out (diagnostic sensors, MB)
-- Last seen (timestamp sensor, user devices only): when the device last pinged Pangolin. While a device is connected Pangolin updates this constantly, so the sensor only moves in 5-minute steps (and right away when the device goes offline) to keep your history database small.
+- Last seen (timestamp sensor, user devices only, **experimental, off by default**): when the device last pinged Pangolin. While a device is connected Pangolin updates this constantly, so the sensor only moves in 5-minute steps (and right away when the device goes offline) to keep your history database small.
 - Blocked and Archived (switches) that block/unblock or archive/unarchive the client
 - Delete client (button, opt-in, **machine clients only**): permanently deletes the client in Pangolin and removes its device from Home Assistant. Pangolin doesn't allow deleting user devices (phones and laptops signed in as a user); archive those instead.
 
@@ -103,16 +103,17 @@ After the key is checked, you get a list of features to tick:
 | Public resources: enable/disable switches | Enabled switch |
 | Private resources: status | Read-only Enabled sensor |
 | Private resources: enable/disable switches | Enabled switch |
-| Sites: restart buttons | Restart button per Newt site. Starts unticked, because most Pangolin versions don't allow it for API keys. |
+| Sites: restart buttons (experimental) | Restart button per Newt site. Starts unticked, because most Pangolin versions don't allow it for API keys. |
 | Sites: data in/out sensors | Data in / Data out diagnostic sensors |
-| Clients: status | Online, Last seen (user devices) and Data in / Data out sensors per client |
+| Clients: status | Online and Data in / Data out sensors per client |
+| Clients: last seen (experimental) | Last seen sensor on user devices. Starts unticked. |
 | Clients: block and archive switches | Blocked and Archived switches |
 | Clients: delete buttons | Delete client button on machine clients. **Permanent**, so it starts unticked. |
 | Organization: reset bandwidth button | Reset bandwidth button |
 
 Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices, and new features stay off. When an update adds features, Home Assistant shows a **"New Pangolin features are available"** notice under Settings > System > Repairs. Press **Fix** to see the new features and the permissions they need, and tick the ones you want. You can also ignore the notice, or turn features on later under Configure.
 
-Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked except client delete buttons and site restart buttons. Write permissions (Update Resource, Update Site Resource, the client actions, Reset Organization Bandwidth, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
+Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked except client delete buttons and experimental features (site restart, last seen). Write permissions (Update Resource, Update Site Resource, the client actions, Reset Organization Bandwidth, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
 
 To change features later, go to the integration's page and choose Configure. Entities and devices for features you turn off are removed.
 
