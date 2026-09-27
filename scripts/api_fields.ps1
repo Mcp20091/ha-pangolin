@@ -107,7 +107,8 @@ if ($SkipCertificateCheck -and $PSVersionTable.PSVersion.Major -lt 6) {
 
 $report = [ordered]@{}
 
-function Invoke-Fetch([string]$Label, [string]$Path, [hashtable]$Query) {
+function Invoke-Call([string]$Path, [hashtable]$Query) {
+    # Returns @{ Data = ...; Error = $null } or @{ Data = $null; Error = 'error ...' }.
     $uri = $base + $Path
     if ($Query) {
         $pairs = foreach ($entry in $Query.GetEnumerator()) {
@@ -124,16 +125,20 @@ function Invoke-Fetch([string]$Label, [string]$Path, [hashtable]$Query) {
         $request.SkipCertificateCheck = $true
     }
     try {
-        $data = (Invoke-RestMethod @request).data
+        return @{ Data = (Invoke-RestMethod @request).data; Error = $null }
     }
     catch {
         $code = $null
         try { $code = [int]$_.Exception.Response.StatusCode } catch { $code = $null }
-        $report[$Label] = if ($code) { "error $code" } else { "error $($_.Exception.GetType().Name)" }
-        return $null
+        $message = if ($code) { "error $code" } else { "error $($_.Exception.GetType().Name)" }
+        return @{ Data = $null; Error = $message }
     }
-    $report[$Label] = Get-Shape $data
-    return $data
+}
+
+function Invoke-Fetch([string]$Label, [string]$Path, [hashtable]$Query) {
+    $result = Invoke-Call $Path $Query
+    $report[$Label] = if ($result.Error) { $result.Error } else { Get-Shape $result.Data }
+    return $result.Data
 }
 
 $null = Invoke-Fetch 'GET /org/{orgId}' "/org/$OrgId"
@@ -153,20 +158,26 @@ foreach ($list in $lists) {
     $items = @()
     if ($null -ne $data -and $null -ne $data.($list.Key)) { $items = @($data.($list.Key)) }
 
-    # A few items' details are enough to see every field.
+    # A few items' details are enough to see every field. Use real IDs from
+    # the list; if it couldn't be read, try the first few IDs.
+    $ids = @($items | Select-Object -First 3 | ForEach-Object { $_.($list.Id) } | Where-Object { $null -ne $_ })
     $detailLabel = 'GET ' + ($list.Detail -f '{id}') + " ($($list.Name))"
-    foreach ($item in ($items | Select-Object -First 3)) {
-        $itemId = $item.($list.Id)
-        if ($null -eq $itemId) { continue }
-        $previous = $report[$detailLabel]
-        $result = Invoke-Fetch $detailLabel ($list.Detail -f $itemId)
-        if ($previous -is [System.Collections.IDictionary]) {
-            # Keep what earlier items showed, even if this one failed.
-            $report[$detailLabel] = if ($null -ne $result) { Merge-Shape $previous $report[$detailLabel] } else { $previous }
-        }
+    if ($ids.Count -eq 0) {
+        $ids = @(1, 2, 3)
+        $detailLabel += ' [guessed IDs 1-3]'
     }
-    if ($list.Name -eq 'resources' -and $items.Count) {
-        $first = $items[0].resourceId
+    $merged = $null
+    $lastError = $null
+    $found = @()
+    foreach ($itemId in $ids) {
+        $result = Invoke-Call ($list.Detail -f $itemId) $null
+        if ($result.Error) { $lastError = $result.Error; continue }
+        $merged = Merge-Shape $merged (Get-Shape $result.Data)
+        $found += $itemId
+    }
+    $report[$detailLabel] = if ($null -ne $merged) { $merged } else { $lastError }
+    if ($list.Name -eq 'resources') {
+        $first = if ($found.Count) { $found[0] } else { $ids[0] }
         $null = Invoke-Fetch 'GET /resource/{id}/targets' "/resource/$first/targets"
     }
 }

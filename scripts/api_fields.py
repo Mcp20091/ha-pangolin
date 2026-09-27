@@ -102,16 +102,18 @@ def main() -> None:
     api = Api(base, key, verify)
     report: dict[str, Any] = {}
 
-    def fetch(label: str, path: str, **params: Any) -> Any:
+    def call(path: str, **params: Any) -> tuple[Any, str | None]:
+        """Return (data, None) on success or (None, "error ...")."""
         try:
-            data = api.get(path, **params)
+            return api.get(path, **params), None
         except urllib.error.HTTPError as err:
-            report[label] = f"error {err.code}"
-            return None
+            return None, f"error {err.code}"
         except (urllib.error.URLError, TimeoutError, ValueError) as err:
-            report[label] = f"error {type(err).__name__}"
-            return None
-        report[label] = shape(data)
+            return None, f"error {type(err).__name__}"
+
+    def fetch(label: str, path: str, **params: Any) -> Any:
+        data, error = call(path, **params)
+        report[label] = error if error else shape(data)
         return data
 
     fetch("GET /org/{orgId}", f"/org/{org}")
@@ -129,20 +131,26 @@ def main() -> None:
     for name, path, key_name, id_field, detail, extra in lists:
         data = fetch(f"GET {path.replace(org, '{orgId}')}", path, page=1, pageSize=20, **extra)
         items = (data or {}).get(key_name) or []
-        # A few items' details are enough to see every field.
-        for item in items[:3]:
-            item_id = item.get(id_field)
-            if item_id is None:
+        # A few items' details are enough to see every field. Use real IDs
+        # from the list; if it couldn't be read, try the first few IDs.
+        ids = [i[id_field] for i in items[:3] if i.get(id_field) is not None]
+        label = f"GET {detail.format('{id}')} ({name})"
+        if not ids:
+            ids = [1, 2, 3]
+            label += " [guessed IDs 1-3]"
+        merged: Any = None
+        last_error: str | None = None
+        found: list[Any] = []
+        for item_id in ids:
+            detail_data, error = call(detail.format(item_id))
+            if error:
+                last_error = error
                 continue
-            label = f"GET {detail.format('{id}')} ({name})"
-            detail_data = fetch(f"{label} #{item_id}", detail.format(item_id))
-            if detail_data is not None:
-                previous = report.pop(label, None)
-                report[label] = merge(previous, report.pop(f"{label} #{item_id}"))
-            else:
-                report[label] = report.pop(f"{label} #{item_id}")
-        if name == "resources" and items:
-            first = items[0].get("resourceId")
+            merged = merge(merged, shape(detail_data))
+            found.append(item_id)
+        report[label] = merged if merged is not None else last_error
+        if name == "resources":
+            first = (found or ids)[0]
             fetch("GET /resource/{id}/targets", f"/resource/{first}/targets")
 
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api-fields.json")
