@@ -2,6 +2,12 @@
 
 Notes for AI coding agents and human contributors working on this repo. Read this before changing anything. For setup and test commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Keep this file current
+
+This file is only useful if it's accurate. If you notice anything here that's wrong, outdated or missing, update this file in the same change, or say so in your PR or issue if you can't. That includes Pangolin API behavior that changed upstream, a renamed file, a new gotcha, or a convention that no longer holds.
+
+AI agents: when your work shows this file needs changing, suggest or make the edit to AGENTS.md rather than working around the stale note silently.
+
 ## What this is
 
 A Home Assistant custom integration (domain `pangolin`, installed through HACS) for the [Pangolin](https://github.com/fosrl/pangolin) Integration API. It polls every 30 s and exposes:
