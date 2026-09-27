@@ -96,6 +96,43 @@
   },
   "options": {
     "step": {
+      "init": {
+        "title": "Pangolin options",
+        "menu_options": {
+          "features": "Choose features",
+          "permissions": "Permission check (advanced)"
+        }
+      },
+      "permissions": {
+        "title": "Permission check (advanced)",
+        "description": "Works out the smallest set of Pangolin permissions the ticked features need, compares it with what this integration's key (ID `{key_id}`) has, and can add what is missing or remove what is not needed. Tick features that are off today to add the permissions they need.\n\n**Requirements:** Pangolin only lets **root** API keys read or change key permissions. To compare and change them, enter a root key that has **List API Key Actions** and **Set API Key Allowed Actions**. It is used only for this check and is never saved. If this integration itself runs on a root key, that key also needs **Create API Key**. Without a root key you just get the list of permissions to set yourself.\n\n**Warning: use at your own risk.** Changing API key permissions can cut off features you use now, features added in later versions of this integration, and anything else that uses the same key. If that happens, fix the key in the Pangolin dashboard or run this check again. This is an unofficial integration and its authors are not responsible for lost access, connection problems or other issues caused by permission changes.",
+        "data": {
+          "features": "Size the key for these features",
+          "root_api_key": "Root API key (optional, not saved)"
+        }
+      },
+      "permissions_list_only": {
+        "title": "Permissions needed",
+        "description": "{summary}"
+      },
+      "permissions_exact": {
+        "title": "Permissions match",
+        "description": "{summary}"
+      },
+      "permissions_compare": {
+        "title": "Adjust key permissions",
+        "description": "{summary}\n\n**Warning: use at your own risk.** Changing API key permissions can cut off features you use now, features added in later versions of this integration, and anything else that uses the same key. If that happens, fix the key in the Pangolin dashboard or run this check again. This is an unofficial integration and its authors are not responsible for lost access, connection problems or other issues caused by permission changes.",
+        "data": {
+          "apply": "I understand the risk. Set this key to exactly these permissions."
+        }
+      },
+      "permissions_root_in_use": {
+        "title": "Replace root key",
+        "description": "{summary}\n\nThis can create a new organization key named \"Home Assistant (least privilege)\" with only those permissions, check that it works, and switch the integration to it. Your root key is not changed or deleted. Remove it in Pangolin yourself if nothing else uses it.\n\n**Warning: use at your own risk.** Changing API key permissions can cut off features you use now, features added in later versions of this integration, and anything else that uses the same key. If that happens, fix the key in the Pangolin dashboard or run this check again. This is an unofficial integration and its authors are not responsible for lost access, connection problems or other issues caused by permission changes.",
+        "data": {
+          "apply": "I understand the risk. Create the new key and switch to it."
+        }
+      },
       "features": {
         "title": "Choose features",
         "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.",
@@ -107,7 +144,18 @@
     "abort": {
       "cannot_connect": "Could not reach the Pangolin Integration API.",
       "invalid_auth": "The API key was rejected. Re-enter it from the integration page.",
-      "unknown": "Unexpected response from Pangolin."
+      "unknown": "Unexpected response from Pangolin.",
+      "no_changes": "No changes were made."
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Pangolin Integration API.",
+      "invalid_auth": "The API key was rejected.",
+      "unknown": "Unexpected response from Pangolin.",
+      "root_invalid": "That root key was rejected.",
+      "not_root": "That key can't read API key permissions. It must be a root key with the List API Key Actions permission.",
+      "key_format": "The integration's key isn't in the usual <id>.<secret> form, so it can't be looked up.",
+      "key_not_found": "Pangolin couldn't find this integration's key in the organization.",
+      "apply_denied": "Pangolin refused the change. The key making it needs Set API Key Allowed Actions (and Create API Key when replacing a root key)."
     }
   },
   "selector": {

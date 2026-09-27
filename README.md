@@ -76,6 +76,28 @@ Pangolin org API keys can't read their own permission list, so the integration r
 
 To change features later, go to the integration's page and choose Configure. Entities and devices for features you turn off are removed.
 
+### Permission check (advanced)
+
+Configure > **Permission check (advanced)** works out the smallest set of Pangolin permissions your features need.
+
+- **Without a root key**, it lists the permissions to set on your key yourself, with what each one is for.
+- **With a root key**, it compares that list with what the integration's key actually has, then offers to add what's missing and remove what isn't needed. Tick features that are off today to add the permissions they'll need. The key is found automatically from its ID (the part before the `.`), so you don't need to enter its name.
+- **If the integration runs on a root key**, it can create a new organization key with only the needed permissions, check that it works, and switch to it. Your root key isn't changed or deleted.
+
+> **Requirements:** Pangolin only lets **root** API keys read or change key permissions. To compare, the root key needs **List API Key Actions**. To apply changes, it also needs **Set API Key Allowed Actions**, plus **Create API Key** when replacing a root key. The root key you enter is used for that one check and is never saved.
+
+> **Warning: use at your own risk.** Changing permissions can cut off features you use now, features added in later versions, and anything else that uses the same key. Nothing changes until you tick the confirmation box. This is an unofficial project and its authors aren't responsible for lost access, connection problems or other issues caused by permission changes.
+
+| Feature | Pangolin permissions |
+| --- | --- |
+| Always | Get Organization, List Sites |
+| Public resources: status | List Resources |
+| Public resources: switches | List Resources, Update Resource |
+| Private resources: status | List Site Resources |
+| Private resources: switches | List Site Resources, Update Site Resource |
+| Sites: restart buttons | Restart Site (not offered in the dashboard's key editor; some versions don't allow it for API keys) |
+| Sites: data in/out | nothing extra |
+
 ## Credits
 
 The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to.

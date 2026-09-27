@@ -29,6 +29,12 @@ class PangolinNotFoundError(PangolinError):
     """Raised when an endpoint or object does not exist (404)."""
 
 
+def key_id_of(api_key: str) -> str | None:
+    """Pangolin keys look like "<apiKeyId>.<secret>"; return the ID part."""
+    key_id, sep, secret = api_key.strip().partition(".")
+    return key_id if sep and key_id and secret else None
+
+
 def normalize_url(url: str) -> str:
     """Return the Integration API base URL ending in /v1."""
     url = url.strip().rstrip("/")
@@ -113,6 +119,42 @@ class PangolinClient:
         """Return every organization. Only root API keys may call this."""
         data = await self._request("GET", "/orgs")
         return (data or {}).get("orgs") or []
+
+    async def is_root_key(self) -> bool:
+        """Whether this is a root key (org-scoped keys may not list orgs)."""
+        try:
+            await self._request("GET", "/orgs")
+        except PangolinAuthError as err:
+            if err.status == 403:
+                return False
+            raise
+        except PangolinNotFoundError:
+            return False
+        return True
+
+    # Key management below needs a root API key.
+
+    async def list_key_actions(self, key_id: str) -> list[str]:
+        """Return the permission (action) IDs granted to an org API key."""
+        data = await self._request(
+            "GET", f"/org/{self._org_id}/api-key/{key_id}/actions"
+        )
+        return [a["actionId"] for a in (data or {}).get("actions") or []]
+
+    async def set_key_actions(self, key_id: str, actions: list[str]) -> None:
+        """Replace an org API key's permissions with exactly these actions."""
+        await self._request(
+            "POST",
+            f"/org/{self._org_id}/api-key/{key_id}/actions",
+            json={"actionIds": actions},
+        )
+
+    async def create_org_key(self, name: str) -> str:
+        """Create an org API key with no permissions; return the full key."""
+        data = await self._request(
+            "PUT", f"/org/{self._org_id}/api-key", json={"name": name}
+        )
+        return f"{data['apiKeyId']}.{data['apiKey']}"
 
     async def get_org(self) -> dict[str, Any]:
         """Return the configured organization (used to validate setup)."""

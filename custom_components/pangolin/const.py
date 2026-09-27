@@ -28,6 +28,40 @@ ALL_FEATURES = [
     FEATURE_SITE_TRAFFIC,
 ]
 
+# Pangolin API key permissions (action IDs) each feature needs.
+BASE_ACTIONS = ["getOrg", "listSites"]
+FEATURE_ACTIONS = {
+    FEATURE_PUBLIC_STATUS: ["listResources"],
+    FEATURE_PUBLIC_CONTROL: ["listResources", "updateResource"],
+    FEATURE_PRIVATE_STATUS: ["listSiteResources"],
+    FEATURE_PRIVATE_CONTROL: ["listSiteResources", "updateSiteResource"],
+    FEATURE_SITE_RESTART: ["restartSite"],
+    FEATURE_SITE_TRAFFIC: [],
+}
+# Labels as the Pangolin dashboard shows them, plus what each is used for.
+ACTION_INFO = {
+    "getOrg": ("Get Organization", "checking the key during setup"),
+    "listSites": ("List Sites", "sites and their status"),
+    "listResources": ("List Resources", "public resource status"),
+    "updateResource": ("Update Resource", "public resource switches"),
+    "listSiteResources": ("List Site Resources", "private resource status"),
+    "updateSiteResource": ("Update Site Resource", "private resource switches"),
+    "restartSite": (
+        "Restart Site",
+        "restart buttons (not listed in the dashboard's key editor; some "
+        "Pangolin versions don't allow it for API keys at all)",
+    ),
+}
+
+
+def required_actions(features: Iterable[str]) -> list[str]:
+    """Smallest permission set for these features, in a stable order."""
+    needed = set(BASE_ACTIONS)
+    for feature in features:
+        needed.update(FEATURE_ACTIONS.get(feature, []))
+    return [a for a in ACTION_INFO if a in needed]
+
+
 # Resolved view of the ticked features used by the platforms.
 OPT_PUBLIC = "public_resources"
 OPT_PRIVATE = "private_resources"

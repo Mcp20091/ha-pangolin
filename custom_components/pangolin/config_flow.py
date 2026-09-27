@@ -32,9 +32,11 @@ from .api import (
     PangolinConnectionError,
     PangolinError,
     PangolinNotFoundError,
+    key_id_of,
     normalize_url,
 )
 from .const import (
+    ACTION_INFO,
     ALL_FEATURES,
     CONF_FEATURES,
     CONF_ORG_ID,
@@ -45,6 +47,7 @@ from .const import (
     FEATURE_PUBLIC_STATUS,
     OPT_PRIVATE,
     OPT_PUBLIC,
+    required_actions,
 )
 
 # Features that only work when the key can read the matching resource list.
@@ -56,6 +59,9 @@ FEATURE_NEEDS = {
 }
 
 URL_SUFFIX = "/v1"
+CONF_ROOT_API_KEY = "root_api_key"
+CONF_APPLY = "apply"
+NEW_KEY_NAME = "Home Assistant (least privilege)"
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 
 USER_SCHEMA = vol.Schema(
@@ -296,29 +302,47 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
         )
 
 
+def _action_lines(actions: list[str]) -> str:
+    return "\n".join(
+        f"- {ACTION_INFO[a][0]} (`{a}`): {ACTION_INFO[a][1]}" for a in actions
+    ) or "- (none)"
+
+
+def _plain_list(actions: list[str]) -> str:
+    return "\n".join(f"- {ACTION_INFO.get(a, (a,))[0]} (`{a}`)" for a in actions)
+
+
 class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
-    """Change which Pangolin features are used."""
+    """Change features, or check and tighten the API key's permissions."""
 
     def __init__(self) -> None:
         self._access = {}
+        self._target: list[str] = []
+        self._required: list[str] = []
+        self._mode = ""
+        self._summary = ""
+        # Held only for the length of this flow; never written to the entry.
+        self._admin: PangolinClient | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        try:
-            self._access = await _client(
-                self.hass, self.config_entry.data
-            ).probe_access()
-        except PangolinError as err:
-            return self.async_abort(reason=_error_key(err))
-        current = self.config_entry.options.get(CONF_FEATURES, ALL_FEATURES)
-        return self._show_features(list(current))
+        return self.async_show_menu(
+            step_id="init", menu_options=["features", "permissions"]
+        )
 
     async def async_step_features(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is None:
-            return await self.async_step_init()
+            try:
+                self._access = await _client(
+                    self.hass, self.config_entry.data
+                ).probe_access()
+            except PangolinError as err:
+                return self.async_abort(reason=_error_key(err))
+            current = self.config_entry.options.get(CONF_FEATURES, ALL_FEATURES)
+            return self._show_features(list(current))
         capable = self._capable()
         return self.async_create_entry(
             data={
@@ -326,4 +350,174 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
                     f for f in user_input.get(CONF_FEATURES, []) if f in capable
                 ]
             }
+        )
+
+    async def async_step_permissions(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the features to size the key for, and optionally a root key."""
+        errors: dict[str, str] = {}
+        key_id = key_id_of(self.config_entry.data[CONF_API_KEY])
+        if user_input is not None:
+            self._target = list(user_input.get(CONF_FEATURES, []))
+            self._required = required_actions(self._target)
+            root_key = (user_input.get(CONF_ROOT_API_KEY) or "").strip()
+            try:
+                errors = await self._check_permissions(key_id, root_key)
+            except PangolinError as err:
+                errors = {"base": _error_key(err)}
+            if not errors:
+                return await self.async_step_permissions_result()
+
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_FEATURES): SelectSelector(
+                    SelectSelectorConfig(
+                        options=ALL_FEATURES,
+                        multiple=True,
+                        mode=SelectSelectorMode.LIST,
+                        translation_key="feature",
+                    )
+                ),
+                vol.Optional(CONF_ROOT_API_KEY): PASSWORD_SELECTOR,
+            }
+        )
+        current = self.config_entry.options.get(CONF_FEATURES, ALL_FEATURES)
+        return self.async_show_form(
+            step_id="permissions",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {CONF_FEATURES: list(current)}
+            ),
+            description_placeholders={"key_id": key_id or "unknown"},
+            errors=errors,
+        )
+
+    async def _check_permissions(
+        self, key_id: str | None, root_key: str
+    ) -> dict[str, str]:
+        """Work out what can be reported or changed; returns form errors."""
+        data = self.config_entry.data
+        required = _action_lines(self._required)
+
+        if await _client(self.hass, data).is_root_key():
+            # The integration itself runs on a root key: the least-privilege
+            # fix is a new org key, which this key is allowed to create.
+            self._mode = "root_in_use"
+            self._admin = _client(self.hass, data)
+            self._summary = (
+                "The integration is using a **root** API key, which can do "
+                "anything in every organization.\n\nAn organization key needs "
+                f"only:\n{required}"
+            )
+            return {}
+
+        if not root_key:
+            self._mode = "list_only"
+            self._summary = (
+                f"Grant this key these permissions in Pangolin:\n{required}\n\n"
+                "Pangolin only lets root keys read a key's permissions, so they "
+                "were not compared. Go back and add a root key to compare them "
+                "and have them adjusted for you."
+            )
+            return {}
+
+        if key_id is None:
+            return {"base": "key_format"}
+        admin = _client(self.hass, {**data, CONF_API_KEY: root_key})
+        try:
+            current = await admin.list_key_actions(key_id)
+        except PangolinAuthError as err:
+            return {
+                CONF_ROOT_API_KEY: "root_invalid" if err.status == 401 else "not_root"
+            }
+        except PangolinNotFoundError:
+            return {"base": "key_not_found"}
+
+        missing = [a for a in self._required if a not in current]
+        extra = sorted(a for a in current if a not in self._required)
+        granted = [a for a in self._required if a in current]
+        self._admin = admin
+        self._mode = "compare" if (missing or extra) else "exact"
+        parts = [f"Needed and already granted:\n{_plain_list(granted) or '- (none)'}"]
+        if missing:
+            parts.append(f"**Missing** (will be added):\n{_action_lines(missing)}")
+        if extra:
+            parts.append(
+                f"**Not needed** (will be removed):\n{_plain_list(extra)}\n\n"
+                "If you also use this key for something else, removing these "
+                "will break that."
+            )
+        if not (missing or extra):
+            parts.append("This key already has exactly what it needs.")
+        self._summary = "\n\n".join(parts)
+        return {}
+
+    async def async_step_permissions_result(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the findings and, where possible, offer to apply them."""
+        can_apply = self._mode in ("compare", "root_in_use")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not (can_apply and user_input.get(CONF_APPLY)):
+                return self.async_abort(reason="no_changes")
+            try:
+                await self._apply()
+            except PangolinAuthError as err:
+                errors["base"] = "apply_denied" if err.status == 403 else "invalid_auth"
+            except PangolinError as err:
+                errors["base"] = _error_key(err)
+            else:
+                return self.async_create_entry(data={CONF_FEATURES: self._target})
+
+        schema = (
+            vol.Schema({vol.Optional(CONF_APPLY, default=False): bool})
+            if can_apply
+            else vol.Schema({})
+        )
+        return self.async_show_form(
+            step_id=f"permissions_{self._mode}",
+            data_schema=schema,
+            description_placeholders={"summary": self._summary},
+            errors=errors,
+            last_step=True,
+        )
+
+    # One step id per outcome so each gets its own title and apply label.
+    async def async_step_permissions_compare(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self.async_step_permissions_result(user_input)
+
+    async def async_step_permissions_exact(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self.async_step_permissions_result(user_input)
+
+    async def async_step_permissions_list_only(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self.async_step_permissions_result(user_input)
+
+    async def async_step_permissions_root_in_use(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self.async_step_permissions_result(user_input)
+
+    async def _apply(self) -> None:
+        assert self._admin is not None
+        data = self.config_entry.data
+        if self._mode == "compare":
+            key_id = key_id_of(data[CONF_API_KEY])
+            assert key_id is not None
+            await self._admin.set_key_actions(key_id, self._required)
+            return
+        # root_in_use: make a least-privilege org key and switch to it.
+        new_key = await self._admin.create_org_key(NEW_KEY_NAME)
+        new_id = key_id_of(new_key)
+        assert new_id is not None
+        await self._admin.set_key_actions(new_id, self._required)
+        await _client(self.hass, {**data, CONF_API_KEY: new_key}).get_org()
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, data={**data, CONF_API_KEY: new_key}
         )

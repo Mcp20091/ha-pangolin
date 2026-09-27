@@ -170,10 +170,10 @@ async def test_pagination(hass, aioclient_mock):
     assert len(await client.list_resources()) == 150
 
 
-async def setup_entry(hass, features=None):
+async def setup_entry(hass, features=None, api_key="k"):
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+        data={CONF_URL: BASE, CONF_API_KEY: api_key, CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
         options={} if features is None else {"features": features},
     )
     entry.add_to_hass(hass)
@@ -277,6 +277,9 @@ async def test_options_flow_removes_disabled_entities(hass, aioclient_mock):
     assert reg.async_get("switch.pangolin_nas_enabled")
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "features"})
     assert result["step_id"] == "features"
     assert suggested_features(result) == ALL_FEATURES
     result = await hass.config_entries.options.async_configure(
@@ -289,3 +292,107 @@ async def test_options_flow_removes_disabled_entities(hass, aioclient_mock):
     assert hass.states.get("binary_sensor.pangolin_nas_enabled").state == "on"
     assert reg.async_get("button.pangolin_site_proxmox_restart") is None
     assert hass.states.get("switch.pangolin_home_assistant_enabled").state == "on"
+
+
+async def open_permissions(hass, entry):
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    return await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "permissions"})
+
+
+async def test_permissions_list_only_without_root_key(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs_status=403)
+    entry = await setup_entry(hass, api_key="k1.secret")
+    result = await open_permissions(hass, entry)
+    assert result["step_id"] == "permissions"
+    assert result["description_placeholders"] == {"key_id": "k1"}
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"features": ["public_control"]})
+    assert result["step_id"] == "permissions_list_only"
+    summary = result["description_placeholders"]["summary"]
+    assert "Get Organization (`getOrg`)" in summary
+    assert "Update Resource (`updateResource`)" in summary
+    assert "listSiteResources" not in summary
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_changes"
+
+
+async def test_permissions_trim_and_add_with_root_key(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs_status=403)
+    aioclient_mock.get(
+        f"{BASE}/org/home/api-key/k1/actions",
+        json=ok({"actions": [{"actionId": a} for a in
+                             ("getOrg", "listSites", "listResources", "deleteSite")],
+                 "pagination": {"total": 4, "limit": 1000, "offset": 0}}),
+    )
+    aioclient_mock.post(f"{BASE}/org/home/api-key/k1/actions", json=ok({}))
+    entry = await setup_entry(hass, api_key="k1.secret")
+    result = await open_permissions(hass, entry)
+
+    # Size for public switches: updateResource is missing, deleteSite is extra.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"features": ["public_status", "public_control"], "root_api_key": "root.key"})
+    assert result["step_id"] == "permissions_compare"
+    summary = result["description_placeholders"]["summary"]
+    assert "**Missing** (will be added):\n- Update Resource" in summary
+    assert "**Not needed** (will be removed):\n- deleteSite" in summary
+
+    # Nothing happens unless the risk box is ticked.
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"apply": False})
+    assert result2["reason"] == "no_changes"
+
+    result = await open_permissions(hass, entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"features": ["public_status", "public_control"], "root_api_key": "root.key"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"apply": True})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    posts = [c for c in aioclient_mock.mock_calls
+             if c[0] == "POST" and str(c[1]).endswith("/api-key/k1/actions")]
+    assert posts[-1][2] == {"actionIds": ["getOrg", "listSites", "listResources", "updateResource"]}
+    assert posts[-1][3]["Authorization"] == "Bearer root.key"
+    await hass.async_block_till_done()
+    assert entry.options == {"features": ["public_status", "public_control"]}
+    # The root key is never stored.
+    assert "root.key" not in str(entry.data) and "root.key" not in str(entry.options)
+
+
+async def test_permissions_rejects_non_root_key(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs_status=403)
+    aioclient_mock.get(f"{BASE}/org/home/api-key/k1/actions", status=403, json={"error": True})
+    entry = await setup_entry(hass, api_key="k1.secret")
+    result = await open_permissions(hass, entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"features": ALL_FEATURES, "root_api_key": "org.key"})
+    assert result["step_id"] == "permissions"
+    assert result["errors"] == {"root_api_key": "not_root"}
+
+
+async def test_permissions_replaces_root_key_in_use(hass, aioclient_mock):
+    mock_api(aioclient_mock)  # /orgs answers, so the configured key is root
+    aioclient_mock.put(
+        f"{BASE}/org/home/api-key",
+        json=ok({"apiKeyId": "new1", "apiKey": "fresh", "name": "x", "lastChars": "resh"}),
+    )
+    aioclient_mock.post(f"{BASE}/org/home/api-key/new1/actions", json=ok({}))
+    entry = await setup_entry(hass, api_key="root1.secret")
+    result = await open_permissions(hass, entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"features": ["public_status"]})
+    assert result["step_id"] == "permissions_root_in_use"
+    assert "**root** API key" in result["description_placeholders"]["summary"]
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"apply": True})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    posts = [c for c in aioclient_mock.mock_calls
+             if c[0] == "POST" and str(c[1]).endswith("/api-key/new1/actions")]
+    assert posts[-1][2] == {"actionIds": ["getOrg", "listSites", "listResources"]}
+    await hass.async_block_till_done()
+    assert entry.data[CONF_API_KEY] == "new1.fresh"
