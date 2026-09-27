@@ -94,7 +94,7 @@ async def test_flow_and_entities(hass, aioclient_mock):
     assert result["data"][CONF_URL] == BASE
     assert result["data"][CONF_ORG_ID] == "home"
     assert result["title"] == "Pangolin (Home)"
-    assert result["options"] == {"features": ALL_FEATURES}
+    assert result["options"]["features"] == ALL_FEATURES
     await hass.async_block_till_done()
 
     assert hass.states.get("binary_sensor.pangolin_site_proxmox_online").state == "on"
@@ -290,7 +290,7 @@ async def test_feature_step_detects_access(hass, aioclient_mock):
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"features": ["public_status"]})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["options"] == {"features": ["public_status"]}
+    assert result["options"]["features"] == ["public_status"]
     await hass.async_block_till_done()
     assert hass.states.get("binary_sensor.pangolin_home_assistant_enabled").state == "on"
     assert hass.states.get("switch.pangolin_home_assistant_enabled") is None
@@ -388,7 +388,7 @@ async def test_permissions_trim_and_add_with_root_key(hass, aioclient_mock):
     assert posts[-1][2] == {"actionIds": ["getOrg", "listSites", "listResources", "updateResource"]}
     assert posts[-1][3]["Authorization"] == "Bearer root.key"
     await hass.async_block_till_done()
-    assert entry.options == {"features": ["public_status", "public_control"]}
+    assert entry.options["features"] == ["public_status", "public_control"]
     # The root key is never stored.
     assert "root.key" not in str(entry.data) and "root.key" not in str(entry.options)
 
@@ -622,3 +622,69 @@ def test_client_permissions():
         "archiveClient", "unarchiveClient"]
     assert "deleteClient" in required_actions(["client_delete"])
     assert "resetSiteBandwidth" in required_actions(["reset_bandwidth"])
+
+
+LEGACY = ["public_status", "public_control", "private_status", "private_control",
+          "site_restart", "site_traffic"]
+
+
+def pangolin_issues(hass):
+    from homeassistant.helpers import issue_registry as ir
+
+    return {i for d, i in ir.async_get(hass).issues if d == DOMAIN}
+
+
+async def test_update_announces_new_features(hass, aioclient_mock, hass_client):
+    from homeassistant.setup import async_setup_component
+    from custom_components.pangolin.const import CONF_KNOWN_FEATURES
+
+    assert await async_setup_component(hass, "repairs", {})
+    mock_api(aioclient_mock)
+    # Saved by an earlier version: chose features but has no known-features list.
+    entry = await setup_entry(hass, features=LEGACY)
+    issue_id = (f"new_features_{entry.entry_id}_"
+                "client_status-client_control-client_delete-reset_bandwidth")
+    assert pangolin_issues(hass) == {issue_id}
+
+    client = await hass_client()
+    resp = await client.post(
+        "/api/repairs/issues/fix", json={"handler": DOMAIN, "issue_id": issue_id})
+    flow = await resp.json()
+    assert flow["step_id"] == "confirm"
+    # Offered unticked-if-permanent, with the permissions they need.
+    assert flow["data_schema"][0]["description"]["suggested_value"] == [
+        "client_status", "client_control", "reset_bandwidth"]
+    assert "List Clients" in flow["description_placeholders"]["permissions"]
+    assert "Reset Organization Bandwidth" in flow["description_placeholders"]["permissions"]
+
+    resp = await client.post(
+        f"/api/repairs/issues/fix/{flow['flow_id']}", json={"features": ["client_status"]})
+    assert (await resp.json())["type"] == "create_entry"
+    await hass.async_block_till_done()
+
+    assert entry.options["features"] == LEGACY + ["client_status"]
+    assert entry.options[CONF_KNOWN_FEATURES] == ALL_FEATURES
+    assert pangolin_issues(hass) == set()
+    assert hass.states.get("binary_sensor.pangolin_backup_box_online").state == "on"
+
+
+async def test_no_notice_after_setup_or_saving_features(hass, aioclient_mock):
+    from custom_components.pangolin.const import CONF_KNOWN_FEATURES
+
+    mock_api(aioclient_mock)
+    result = await start_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"features": ["public_status"]})
+    await hass.async_block_till_done()
+    assert result["options"][CONF_KNOWN_FEATURES] == ALL_FEATURES
+    assert pangolin_issues(hass) == set()
+
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "features"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"features": ["public_status", "site_traffic"]})
+    await hass.async_block_till_done()
+    assert entry.options[CONF_KNOWN_FEATURES] == ALL_FEATURES
+    assert pangolin_issues(hass) == set()

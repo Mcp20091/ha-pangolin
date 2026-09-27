@@ -6,11 +6,16 @@ from typing import Any
 
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PangolinClient
 from .const import (
+    ALL_FEATURES,
     DOMAIN,
     CONF_ORG_ID,
     LEVEL_CONTROL,
@@ -23,6 +28,7 @@ from .const import (
     OPT_RESET_BANDWIDTH,
     OPT_RESTART,
     OPT_TRAFFIC,
+    known_features,
 )
 from .coordinator import PangolinConfigEntry, PangolinCoordinator, get_options
 
@@ -49,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PangolinConfigEntry) -> 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _update_new_features_issue(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
@@ -56,6 +63,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: PangolinConfigEntry) -> 
 async def async_unload_entry(hass: HomeAssistant, entry: PangolinConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: PangolinConfigEntry) -> None:
+    """Clean up this entry's repair notices."""
+    _delete_new_features_issues(hass, entry.entry_id)
+
+
+def _new_features_issue_prefix(entry_id: str) -> str:
+    return f"new_features_{entry_id}"
+
+
+def _delete_new_features_issues(
+    hass: HomeAssistant, entry_id: str, keep: str | None = None
+) -> None:
+    prefix = _new_features_issue_prefix(entry_id)
+    for domain, issue_id in list(ir.async_get(hass).issues):
+        if domain == DOMAIN and issue_id.startswith(prefix) and issue_id != keep:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+
+def _update_new_features_issue(hass: HomeAssistant, entry: PangolinConfigEntry) -> None:
+    """Announce features added by an update that this entry hasn't seen yet."""
+    known = known_features(entry.options)
+    new = [f for f in ALL_FEATURES if f not in known]
+    if not new:
+        _delete_new_features_issues(hass, entry.entry_id)
+        return
+    # A new set of features gets a new ID, so it shows even if an earlier
+    # notice was ignored.
+    issue_id = f"{_new_features_issue_prefix(entry.entry_id)}_{'-'.join(new)}"
+    _delete_new_features_issues(hass, entry.entry_id, keep=issue_id)
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="new_features",
+        translation_placeholders={"title": entry.title},
+        data={"entry_id": entry.entry_id, "new": new},
+    )
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: PangolinConfigEntry) -> None:

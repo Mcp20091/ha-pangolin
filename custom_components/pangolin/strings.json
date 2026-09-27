@@ -206,5 +206,25 @@
         "reset_bandwidth": "Organization: reset bandwidth button"
       }
     }
+  },
+  "issues": {
+    "new_features": {
+      "title": "New Pangolin features are available for {title}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Turn on new Pangolin features",
+            "description": "An update added features to {title}. Tick the ones you want and submit. Anything you leave unticked stays off, and you can change it later under Configure > Choose features. {hidden}\n\nPermissions they need on your API key in Pangolin:\n{permissions}\n\nWithout them, a feature shows an error naming the missing permission when you use it.",
+            "data": {
+              "features": "New features"
+            }
+          }
+        },
+        "abort": {
+          "entry_removed": "This Pangolin entry no longer exists.",
+          "cannot_connect": "Could not reach the Pangolin Integration API. Try again later."
+        }
+      }
+    }
   }
 }

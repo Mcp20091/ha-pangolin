@@ -109,7 +109,7 @@ After the key is checked, you get a list of features to tick:
 | Clients: delete buttons | Delete client button. **Permanent**, so it starts unticked. |
 | Organization: reset bandwidth button | Reset bandwidth button |
 
-Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices; new features stay off until you tick them under Configure.
+Site online sensors, the Sites online summary and API reachable are always on. Updating from an earlier version keeps your current choices, and new features stay off. When an update adds features, Home Assistant shows a **"New Pangolin features are available"** notice under Settings > System > Repairs. Press **Fix** to see the new features and the permissions they need, and tick the ones you want. You can also ignore the notice, or turn features on later under Configure.
 
 Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked except client delete buttons. Write permissions (Update Resource, Update Site Resource, the client actions, Reset Organization Bandwidth, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
 

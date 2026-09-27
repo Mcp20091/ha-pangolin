@@ -1,6 +1,6 @@
 """Constants for the Pangolin integration."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
 from typing import Any
 
@@ -35,6 +35,18 @@ ALL_FEATURES = [
     FEATURE_CLIENT_DELETE,
     FEATURE_RESET_BANDWIDTH,
 ]
+# Features that existed before v0.6.0. Entries saved without a known-features
+# list have seen exactly these, so anything newer gets announced.
+LEGACY_FEATURES = [
+    FEATURE_PUBLIC_STATUS,
+    FEATURE_PUBLIC_CONTROL,
+    FEATURE_PRIVATE_STATUS,
+    FEATURE_PRIVATE_CONTROL,
+    FEATURE_SITE_RESTART,
+    FEATURE_SITE_TRAFFIC,
+]
+# Stored beside the chosen features: every feature the user has been offered.
+CONF_KNOWN_FEATURES = "known_features"
 # Permanent actions stay unticked until the user opts in.
 DEFAULT_OFF_FEATURES = {FEATURE_CLIENT_DELETE}
 DEFAULT_FEATURES = [f for f in ALL_FEATURES if f not in DEFAULT_OFF_FEATURES]
@@ -133,3 +145,23 @@ def resolve_features(features: Iterable[str]) -> dict[str, Any]:
         OPT_CLIENT_DELETE: FEATURE_CLIENT_DELETE in f,
         OPT_RESET_BANDWIDTH: FEATURE_RESET_BANDWIDTH in f,
     }
+
+# Features that only work when the key can read the matching list.
+FEATURE_NEEDS = {
+    FEATURE_PUBLIC_STATUS: OPT_PUBLIC,
+    FEATURE_PUBLIC_CONTROL: OPT_PUBLIC,
+    FEATURE_PRIVATE_STATUS: OPT_PRIVATE,
+    FEATURE_PRIVATE_CONTROL: OPT_PRIVATE,
+    FEATURE_CLIENT_STATUS: OPT_CLIENTS,
+    FEATURE_CLIENT_CONTROL: OPT_CLIENTS,
+    FEATURE_CLIENT_DELETE: OPT_CLIENTS,
+}
+
+
+def known_features(options: Mapping[str, Any]) -> list[str]:
+    """Features this entry has already been offered."""
+    if CONF_KNOWN_FEATURES in options:
+        return list(options[CONF_KNOWN_FEATURES])
+    # Chose features before this list existed: they saw the pre-0.6.0 set.
+    # No options at all predates feature selection, so there's nothing to add.
+    return list(LEGACY_FEATURES) if CONF_FEATURES in options else list(ALL_FEATURES)

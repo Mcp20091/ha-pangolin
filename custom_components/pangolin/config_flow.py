@@ -39,33 +39,17 @@ from .const import (
     ACTION_INFO,
     ALL_FEATURES,
     CONF_FEATURES,
+    CONF_KNOWN_FEATURES,
     DEFAULT_FEATURES,
     DEFAULT_OFF_FEATURES,
     CONF_ORG_ID,
     DOMAIN,
-    FEATURE_CLIENT_CONTROL,
-    FEATURE_CLIENT_DELETE,
-    FEATURE_CLIENT_STATUS,
-    FEATURE_PRIVATE_CONTROL,
-    FEATURE_PRIVATE_STATUS,
-    FEATURE_PUBLIC_CONTROL,
-    FEATURE_PUBLIC_STATUS,
+    FEATURE_NEEDS,
     OPT_CLIENTS,
     OPT_PRIVATE,
     OPT_PUBLIC,
     required_actions,
 )
-
-# Features that only work when the key can read the matching resource list.
-FEATURE_NEEDS = {
-    FEATURE_PUBLIC_STATUS: OPT_PUBLIC,
-    FEATURE_PUBLIC_CONTROL: OPT_PUBLIC,
-    FEATURE_PRIVATE_STATUS: OPT_PRIVATE,
-    FEATURE_PRIVATE_CONTROL: OPT_PRIVATE,
-    FEATURE_CLIENT_STATUS: OPT_CLIENTS,
-    FEATURE_CLIENT_CONTROL: OPT_CLIENTS,
-    FEATURE_CLIENT_DELETE: OPT_CLIENTS,
-}
 
 URL_SUFFIX = "/v1"
 CONF_ROOT_API_KEY = "root_api_key"
@@ -294,7 +278,8 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
             options={
                 CONF_FEATURES: [
                     f for f in user_input.get(CONF_FEATURES, []) if f in capable
-                ]
+                ],
+                CONF_KNOWN_FEATURES: ALL_FEATURES,
             },
         )
 
@@ -411,7 +396,8 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
             data={
                 CONF_FEATURES: [
                     f for f in user_input.get(CONF_FEATURES, []) if f in capable
-                ]
+                ],
+                CONF_KNOWN_FEATURES: ALL_FEATURES,
             }
         )
 
@@ -531,7 +517,12 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
             except PangolinError as err:
                 errors["base"] = _error_key(err)
             else:
-                return self.async_create_entry(data={CONF_FEATURES: self._target})
+                return self.async_create_entry(
+                    data={
+                        CONF_FEATURES: self._target,
+                        CONF_KNOWN_FEATURES: ALL_FEATURES,
+                    }
+                )
 
         schema = (
             vol.Schema({vol.Optional(CONF_APPLY, default=False): bool})
