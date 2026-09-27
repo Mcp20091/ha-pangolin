@@ -24,6 +24,7 @@ MACHINE = {"clientId": 11, "name": "Backup box", "niceId": "backup", "type": "ol
            "online": True, "blocked": False, "archived": False, "olmVersion": "1.2.0",
            "megabytesIn": 5.0, "megabytesOut": 1.5, "subnet": "100.90.128.4/32"}
 LAPTOP = {"clientId": 12, "name": "Laptop", "niceId": "laptop", "online": False,
+          "firstSeen": 1790000000, "lastSeen": 1790467200,
           "blocked": True, "archived": False, "olmVersion": "1.3.0",
           "username": "alex", "userEmail": "alex@example.com", "deviceModel": "ThinkPad",
           "megabytesIn": 0, "megabytesOut": 0}
@@ -716,3 +717,36 @@ async def test_site_restart_off_by_default(hass, aioclient_mock):
     mock_api(aioclient_mock)
     await setup_entry(hass)
     assert hass.states.get("button.pangolin_site_proxmox_restart") is None
+
+
+async def test_last_seen_for_user_devices_only(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:00:00+00:00"
+    assert hass.states.get("sensor.pangolin_backup_box_last_seen") is None
+
+
+async def test_last_seen_steps_while_online(hass, aioclient_mock):
+    from custom_components.pangolin.coordinator import PangolinData
+
+    mock_api(aioclient_mock)
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data
+    base = 1790467200
+
+    def push(last_seen, online):
+        clients = dict(coordinator.data.clients)
+        clients[12] = {**clients[12], "lastSeen": last_seen, "online": online}
+        coordinator.async_set_updated_data(PangolinData(
+            sites=coordinator.data.sites, resources=coordinator.data.resources,
+            private_resources=coordinator.data.private_resources, clients=clients))
+
+    push(base + 60, True)  # a ping a minute later: not worth a new state
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:00:00+00:00"
+    push(base + 300, True)  # five minutes on: published
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:05:00+00:00"
+    push(base + 420, False)  # went offline: the exact last ping is published
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.pangolin_laptop_last_seen").state == "2026-09-27T00:07:00+00:00"

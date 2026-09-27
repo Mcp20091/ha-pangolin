@@ -26,6 +26,7 @@ Each private resource becomes a device with
 Each client (machine client or user device running the Pangolin client) becomes a device with
 - Online (binary sensor, connectivity), with kind, user, version and device model as attributes. It's handy for presence, e.g. "my laptop is connected through Pangolin".
 - Data in / Data out (diagnostic sensors, MB)
+- Last seen (timestamp sensor, user devices only): when the device last pinged Pangolin. While a device is connected Pangolin updates this constantly, so the sensor only moves in 5-minute steps (and right away when the device goes offline) to keep your history database small.
 - Blocked and Archived (switches) that block/unblock or archive/unarchive the client
 - Delete client (button, opt-in, **machine clients only**): permanently deletes the client in Pangolin and removes its device from Home Assistant. Pangolin doesn't allow deleting user devices (phones and laptops signed in as a user); archive those instead.
 
@@ -104,7 +105,7 @@ After the key is checked, you get a list of features to tick:
 | Private resources: enable/disable switches | Enabled switch |
 | Sites: restart buttons | Restart button per Newt site. Starts unticked, because most Pangolin versions don't allow it for API keys. |
 | Sites: data in/out sensors | Data in / Data out diagnostic sensors |
-| Clients: status | Online sensor and Data in / Data out sensors per client |
+| Clients: status | Online, Last seen (user devices) and Data in / Data out sensors per client |
 | Clients: block and archive switches | Blocked and Archived switches |
 | Clients: delete buttons | Delete client button on machine clients. **Permanent**, so it starts unticked. |
 | Organization: reset bandwidth button | Reset bandwidth button |

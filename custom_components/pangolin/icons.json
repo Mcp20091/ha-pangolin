@@ -50,6 +50,9 @@
           "offline": "mdi:heart-off",
           "unknown": "mdi:heart-outline"
         }
+      },
+      "client_last_seen": {
+        "default": "mdi:clock-check-outline"
       }
     },
     "switch": {

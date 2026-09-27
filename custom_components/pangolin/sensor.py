@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -10,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfInformation
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import LEVEL_OFF, OPT_CLIENTS, OPT_PUBLIC, OPT_TRAFFIC
@@ -58,6 +59,12 @@ async def async_setup_entry(
                 lambda c, cid: [
                     PangolinClientTraffic(c, cid, "megabytesIn", "data_in"),
                     PangolinClientTraffic(c, cid, "megabytesOut", "data_out"),
+                    # Only user devices report when they were last seen.
+                    *(
+                        [PangolinClientLastSeen(c, cid)]
+                        if c.data.clients[cid].get("kind") == "user"
+                        else []
+                    ),
                 ]
             )
             if options[OPT_CLIENTS] != LEVEL_OFF
@@ -159,3 +166,45 @@ class PangolinClientTraffic(PangolinClientEntity, SensorEntity):
     def native_value(self) -> float | None:
         value = self.client.get(self._field)
         return None if value is None else float(value)
+
+
+# Pangolin bumps lastSeen on every client ping, so while a device is online
+# the raw value moves every poll. Publish it at most this often (and always
+# when the device goes offline) to keep the recorder quiet.
+LAST_SEEN_STEP = 300
+
+
+class PangolinClientLastSeen(PangolinClientEntity, SensorEntity):
+    """When a user device last pinged Pangolin (accurate to 5 minutes)."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "client_last_seen"
+
+    def __init__(self, coordinator: PangolinCoordinator, client_id: int) -> None:
+        super().__init__(coordinator, client_id, "last_seen")
+        self._reported: int | None = None
+        self._update_reported()
+
+    def _update_reported(self) -> None:
+        raw = self.client.get("lastSeen")
+        if raw is None:
+            return
+        raw = int(raw)
+        if (
+            self._reported is None
+            or not self.client.get("online")
+            or raw - self._reported >= LAST_SEEN_STEP
+            or raw < self._reported
+        ):
+            self._reported = raw
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._update_reported()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> datetime | None:
+        if self._reported is None:
+            return None
+        return datetime.fromtimestamp(self._reported, tz=timezone.utc)
