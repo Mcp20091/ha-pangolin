@@ -59,7 +59,8 @@ LEGACY_FEATURES = [
 # Stored beside the chosen features: every feature the user has been offered.
 CONF_KNOWN_FEATURES = "known_features"
 # Unticked until the user opts in: permanent actions, site restart (most
-# Pangolin versions don't allow it for API keys), experimental features, SSO
+# Pangolin versions don't allow it for API keys), last seen (only on user
+# devices, and moves in 5-minute steps), SSO
 # switches (turning SSO off exposes a resource) and maintenance mode (needs a
 # licensed Pangolin).
 DEFAULT_OFF_FEATURES = {

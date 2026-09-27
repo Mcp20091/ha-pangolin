@@ -66,7 +66,7 @@ async def async_setup_entry(
                 lambda c, cid: [
                     PangolinClientTraffic(c, cid, "megabytesIn", "data_in"),
                     PangolinClientTraffic(c, cid, "megabytesOut", "data_out"),
-                    # Experimental; only user devices report when last seen.
+                    # Opt-in; only user devices report when last seen.
                     *(
                         [PangolinClientLastSeen(c, cid)]
                         if options[OPT_CLIENT_LAST_SEEN]
