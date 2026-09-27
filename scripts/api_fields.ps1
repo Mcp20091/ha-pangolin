@@ -78,7 +78,8 @@ function Merge-Shape($A, $B) {
 try {
 if (-not $Url) {
     # Read-Host would add ": " after the prompt, so print it ourselves.
-    Write-Host -NoNewline 'Integration API address (e.g. api.example.com): https://'
+    Write-Host "Integration API address. Type your domain, or a full http(s):// address if the API isn't on api.<domain>."
+    Write-Host -NoNewline 'https://api.'
     $Url = Read-Host
 }
 if (-not $OrgId) { $OrgId = Read-Host 'Organization ID' }
@@ -93,8 +94,11 @@ if (-not $apiKey) {
 $apiKey = $apiKey.Trim()
 
 $base = $Url.Trim().TrimEnd('/')
-# The prompt already shows https://, so a bare host means https.
-if ($base -notmatch '://') { $base = 'https://' + $base }
+# The prompt already shows "https://api.", so a bare domain goes after it.
+# A full address is used as typed.
+if ($base -notmatch '://') {
+    $base = 'https://' + $(if ($base.StartsWith('api.')) { $base } else { 'api.' + $base })
+}
 if (-not $base.EndsWith('/v1')) { $base += '/v1' }
 if ($base -notmatch '^https?://') { throw 'The address must start with http:// or https://' }
 if ($SkipCertificateCheck -and $PSVersionTable.PSVersion.Major -lt 6) {

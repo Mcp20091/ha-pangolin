@@ -66,9 +66,10 @@ def merge(a: Any, b: Any) -> Any:
 class Api:
     def __init__(self, base: str, key: str, verify: bool) -> None:
         base = base.strip().rstrip("/")
-        # The prompt already shows https://, so a bare host means https.
+        # The prompt already shows "https://api.", so a bare domain goes after
+        # it. A full address is used as typed.
         if "://" not in base:
-            base = "https://" + base
+            base = "https://" + (base if base.startswith("api.") else "api." + base)
         if not base.endswith("/v1"):
             base += "/v1"
         if urllib.parse.urlparse(base).scheme not in ("http", "https"):
@@ -93,7 +94,8 @@ def ask(prompt: str) -> str:
 
 
 def main() -> None:
-    base = ask("Integration API address (e.g. api.example.com): https://")
+    print("Integration API address. Type your domain, or a full http(s):// address if the API isn't on api.<domain>.", file=sys.stderr)
+    base = ask("https://api.")
     org = ask("Organization ID: ").strip()
     key = getpass.getpass("API key (not shown): ", stream=sys.stderr).strip()
     verify = ask("Verify SSL certificate? [Y/n]: ").strip().lower() != "n"
