@@ -25,7 +25,7 @@ New sites and resources are picked up automatically. Data refreshes every 30 sec
 
 ## Pangolin requirements
 
-1. Enable the Integration API (self-hosted) by setting `flags.enable_integration_api: true` in Pangolin's `config.yml`, then route it so Home Assistant can reach it (it listens on port 3003 by default). See the Pangolin docs for the Integration API.
+1. Enable the Integration API (self-hosted) by setting `flags.enable_integration_api: true` in Pangolin's `config.yml`, then route it so Home Assistant can reach it (it listens on port 3003 by default). See the Pangolin docs: [Integration API](https://docs.pangolin.net/self-host/advanced/integration-api).
 2. In the Pangolin dashboard, create an organization API key with these permissions
    - Get Organization
    - List Sites
@@ -104,7 +104,7 @@ Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the tools y
 
 ## Credits
 
-- **[Pangolin](https://github.com/fosrl/pangolin)** by the Fossorial team and its contributors: the self-hosted tunneled reverse proxy this integration talks to, its Integration API, and its documentation. The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to. Please support the project upstream.
+- **[Pangolin](https://github.com/fosrl/pangolin)** by the Fossorial team and its contributors: the self-hosted tunneled reverse proxy this integration talks to, its [Integration API](https://docs.pangolin.net/self-host/advanced/integration-api), and its documentation. The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to. Please support the project upstream.
 - **[Home Assistant](https://www.home-assistant.io)** and its developer documentation
 - **[HACS](https://hacs.xyz)** for custom integration distribution and validation
 - **[pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component)** for the test harness

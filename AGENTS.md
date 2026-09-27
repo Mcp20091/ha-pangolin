@@ -30,6 +30,7 @@ It's unofficial, and it was written with Claude. Keep the README's "Built with C
 
 ## Pangolin API facts (verified against source; recheck when upgrading)
 
+- **Setup docs:** https://docs.pangolin.net/self-host/advanced/integration-api (enabling the API, config flag, routing).
 - **Base URL** ends in `/v1`. The server hosts Swagger at `/v1/docs` and the spec at `/v1/openapi.json`. The spec's response schemas are generic (`data: object`), so field names come from the route handlers in `fosrl/pangolin/server/routers/**`. Route guards (which permission each endpoint needs) are in `server/routers/integration.ts`.
 - **Key format:** `<apiKeyId>.<secret>`, sent as `Authorization: Bearer <key>`. `key_id_of()` pulls out the ID.
 - **Status codes:** 401 means the key is bad. 403 means the key is valid but lacks the permission, or isn't root for root-only routes.

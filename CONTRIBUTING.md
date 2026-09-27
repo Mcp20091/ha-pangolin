@@ -51,7 +51,7 @@ Please add or update tests with any behavior change and make sure CI passes.
 
 [AGENTS.md](AGENTS.md) has the details worth knowing before changing anything: API quirks, naming rules, and what hassfest rejects.
 
-Your Pangolin server documents its own API at `https://<your-api-host>/v1/docs`, with the raw spec at `/v1/openapi.json`. Pangolin's source ([fosrl/pangolin](https://github.com/fosrl/pangolin)) is the final word on which permission each endpoint needs.
+To enable and reach the API, follow Pangolin's [Integration API guide](https://docs.pangolin.net/self-host/advanced/integration-api). Your Pangolin server documents its own API at `https://<your-api-host>/v1/docs`, with the raw spec at `/v1/openapi.json`. Pangolin's source ([fosrl/pangolin](https://github.com/fosrl/pangolin)) is the final word on which permission each endpoint needs.
 
 ## Releases
 
