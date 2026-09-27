@@ -47,8 +47,9 @@ LEGACY_FEATURES = [
 ]
 # Stored beside the chosen features: every feature the user has been offered.
 CONF_KNOWN_FEATURES = "known_features"
-# Permanent actions stay unticked until the user opts in.
-DEFAULT_OFF_FEATURES = {FEATURE_CLIENT_DELETE}
+# Unticked until the user opts in: permanent actions, and site restart, which
+# most Pangolin versions don't allow for API keys.
+DEFAULT_OFF_FEATURES = {FEATURE_CLIENT_DELETE, FEATURE_SITE_RESTART}
 DEFAULT_FEATURES = [f for f in ALL_FEATURES if f not in DEFAULT_OFF_FEATURES]
 
 # Pangolin API key permissions (action IDs) each feature needs.

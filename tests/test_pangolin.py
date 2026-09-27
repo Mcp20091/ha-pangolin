@@ -236,7 +236,7 @@ async def test_private_resources_optional(hass, aioclient_mock):
 
 async def test_restart_button_and_sites_list(hass, aioclient_mock):
     mock_api(aioclient_mock)
-    await setup_entry(hass)
+    await setup_entry(hass, features=["site_restart"])
 
     online = hass.states.get("sensor.pangolin_home_sites_online")
     assert online.state == "1"
@@ -256,7 +256,7 @@ async def test_restart_not_supported(hass, aioclient_mock):
     from homeassistant.exceptions import HomeAssistantError
 
     mock_api(aioclient_mock)
-    await setup_entry(hass)
+    await setup_entry(hass, features=["site_restart"])
     aioclient_mock.clear_requests()
     aioclient_mock.post(f"{BASE}/site/1/restart", status=404, json={"error": True})
     with pytest.raises(HomeAssistantError, match="does not expose site restart"):
@@ -277,9 +277,9 @@ async def test_feature_step_detects_access(hass, aioclient_mock):
     mock_api(aioclient_mock, private_status=403)
     result = await start_flow(hass)
     assert result["step_id"] == "features"
-    # Private features are hidden, and client delete starts unticked.
+    # Private features are hidden; client delete and site restart start unticked.
     assert suggested_features(result) == [
-        "public_status", "public_control", "site_restart", "site_traffic",
+        "public_status", "public_control", "site_traffic",
         "client_status", "client_control", "reset_bandwidth"]
     assert "Private" in result["description_placeholders"]["unavailable"]
 
@@ -710,3 +710,9 @@ async def test_no_delete_button_for_user_devices(hass, aioclient_mock):
     assert hass.states.get("button.pangolin_backup_box_delete_client") is not None
     assert hass.states.get("button.pangolin_laptop_delete_client") is None
     assert ent_reg.async_get(stale.entity_id) is None
+
+
+async def test_site_restart_off_by_default(hass, aioclient_mock):
+    mock_api(aioclient_mock)
+    await setup_entry(hass)
+    assert hass.states.get("button.pangolin_site_proxmox_restart") is None

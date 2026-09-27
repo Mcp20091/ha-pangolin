@@ -198,7 +198,7 @@
         "public_control": "Public resources: enable/disable switches",
         "private_status": "Private resources: status (enabled state)",
         "private_control": "Private resources: enable/disable switches",
-        "site_restart": "Sites: restart buttons",
+        "site_restart": "Sites: restart buttons (reconnect a site's tunnel; most Pangolin versions don't allow this for API keys, off by default)",
         "site_traffic": "Sites: data in/out sensors",
         "client_status": "Clients: status (online, data in/out)",
         "client_control": "Clients: block and archive switches",
