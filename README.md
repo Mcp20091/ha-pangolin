@@ -121,6 +121,44 @@ Configure > **Permission check (advanced)** works out the smallest set of Pangol
 | Sites: restart buttons | Restart Site (not offered in the dashboard's key editor; some versions don't allow it for API keys) |
 | Sites: data in/out | nothing extra |
 
+## Troubleshooting
+
+**"Could not reach the Pangolin Integration API"**
+- In a browser on the same network as Home Assistant, open `https://<your-api-host>/v1/docs`. If Swagger doesn't load, the problem is in Pangolin or Traefik, not Home Assistant. Recheck the [Integration API guide](https://docs.pangolin.net/self-host/advanced/integration-api): the config flag, the Traefik routers and service, and DNS for the hostname.
+- Enter just the scheme and host, like `https://api.example.com`. The `/v1` is added for you.
+- If you use a self-signed certificate, untick **Verify SSL certificate**.
+
+**"The API key was rejected"**
+- The key is wrong or was deleted in Pangolin. Home Assistant raises a re-authentication notification, where you can paste a new key.
+
+**Setup asks me to type the organization ID**
+- That's expected with an organization API key, because only root keys can list organizations. The ID is in the Pangolin dashboard URL. "Can't access that organization" means the key belongs to a different organization.
+
+**Some features are missing from the checklist**
+- The key can't read that resource list (see the note on the checklist screen). Add **List Resources** or **List Site Resources** to the key, then open Configure > Choose features again. Configure > Permission check lists exactly what's needed.
+
+**Private resources don't show up**
+- The key lacks **List Site Resources**, or your Pangolin version has no private resources endpoint. The log shows "Private resources unavailable, skipping them". Grant the permission, then reload the integration.
+
+**A switch says "Could not enable/disable resource"**
+- The key lacks **Update Resource** (public) or **Update Site Resource** (private).
+
+**A restart button says Pangolin didn't accept the restart**
+- Many Pangolin versions only allow site restart from the dashboard, not with an API key, and the dashboard's key editor doesn't offer that permission. Turn off Sites: restart buttons under Configure > Choose features to hide them.
+
+**Health shows "Unknown"**
+- Pangolin has no health results for that resource's targets. This usually means health checks are off for them in Pangolin.
+
+**Entities are unavailable**
+- Home Assistant can't reach Pangolin right now (see the first item), or the site or resource was deleted in Pangolin.
+
+**The logo or entity icons didn't change after an update**
+- Your browser is showing cached copies. Do a hard refresh (Ctrl+Shift+R, or Cmd+Shift+R on a Mac) or clear site data for your Home Assistant address. Device rows in the device list always use Home Assistant's generic device icon; the integration's icons appear on entities and cards.
+
+**Getting more detail**
+- On the integration's page, open the menu and choose **Enable debug logging**, reproduce the problem, then disable it to download the log.
+- When [opening an issue](https://github.com/Mcp20091/ha-pangolin/issues), include your Home Assistant and Pangolin versions and the relevant log lines. **Remove API keys and your domain names first.**
+
 ## Contributing
 
 Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the tools you need, how to run the tests and how CI checks changes. [AGENTS.md](AGENTS.md) collects what's worth knowing about the Pangolin API and this codebase before you change it, for people and AI coding agents alike.
