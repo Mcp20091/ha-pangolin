@@ -12,9 +12,18 @@ def ok(data):
     return {"data": data, "success": True, "error": False, "message": "", "status": 200}
 
 
-def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200):
+HOME = {"orgId": "home", "name": "Home"}
+
+
+def mock_api(aioclient_mock, enabled=True, health="healthy", private_status=200,
+             orgs=(HOME,), orgs_status=200):
     aioclient_mock.clear_requests()
-    aioclient_mock.get(f"{BASE}/org/home", json=ok({"org": {"orgId": "home"}}))
+    aioclient_mock.get(
+        f"{BASE}/orgs", status=orgs_status,
+        json=ok({"orgs": list(orgs), "pagination": {"total": len(orgs), "limit": 1000, "offset": 0}}),
+    )
+    aioclient_mock.get(f"{BASE}/org/home", json=ok({"org": HOME}))
+    aioclient_mock.get(f"{BASE}/org/other", status=403, json={"error": True})
     aioclient_mock.get(
         f"{BASE}/org/home/sites",
         json=ok({"sites": [{"siteId": 1, "name": "Proxmox", "niceId": "px", "type": "newt",
@@ -46,15 +55,17 @@ async def test_flow_and_entities(hass, aioclient_mock):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {CONF_URL: "https://api.example.com/", CONF_API_KEY: "id.secret",
-         CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+        {CONF_URL: "https://api.example.com/", CONF_API_KEY: "id.secret", CONF_VERIFY_SSL: True},
     )
+    # A root key that sees a single org skips straight to features.
     assert result["step_id"] == "features"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"features": ALL_FEATURES}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_URL] == BASE
+    assert result["data"][CONF_ORG_ID] == "home"
+    assert result["title"] == "Pangolin (Home)"
     assert result["options"] == {"features": ALL_FEATURES}
     await hass.async_block_till_done()
 
@@ -88,14 +99,62 @@ async def test_legacy_unhealthy_maps_to_offline(hass, aioclient_mock):
     assert hass.states.get("sensor.pangolin_home_assistant_health").state == "offline"
 
 
-async def test_bad_key(hass, aioclient_mock):
-    aioclient_mock.get(f"{BASE}/org/home", status=401, json={"error": True})
+async def start_flow(hass, url=BASE, key="k"):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_URL: BASE, CONF_API_KEY: "bad", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: url, CONF_API_KEY: key, CONF_VERIFY_SSL: True}
     )
+
+
+def field(result, name):
+    for key in result["data_schema"].schema:
+        if key == name:
+            return key
+    raise AssertionError(f"no {name} field")
+
+
+async def test_bad_key(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs_status=401)
+    result = await start_flow(hass, key="bad")
+    assert result["step_id"] == "user"
     assert result["errors"] == {"base": "invalid_auth"}
+    # /v1 is shown beside the box, so the redisplayed value leaves it off.
+    assert field(result, CONF_URL).description["suggested_value"] == "https://api.example.com"
+
+
+async def test_url_box_shows_v1_suffix(hass):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    url_selector = result["data_schema"].schema[field(result, CONF_URL)]
+    assert url_selector.config["suffix"] == "/v1"
+
+
+async def test_root_key_picks_org_from_list(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs=({"orgId": "work", "name": "Work"}, HOME))
+    result = await start_flow(hass)
+    assert result["step_id"] == "org"
+    options = result["data_schema"].schema[field(result, CONF_ORG_ID)].config["options"]
+    assert options == [
+        {"value": "home", "label": "Home (home)"},
+        {"value": "work", "label": "Work (work)"},
+    ]
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ORG_ID: "home"})
+    assert result["step_id"] == "features"
+
+
+async def test_org_key_enters_org_id(hass, aioclient_mock):
+    mock_api(aioclient_mock, orgs_status=403)
+    result = await start_flow(hass)
+    assert result["step_id"] == "org_manual"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ORG_ID: "other"})
+    assert result["errors"] == {"base": "org_denied"}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ORG_ID: " home "})
+    assert result["step_id"] == "features"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"features": ALL_FEATURES})
+    assert result["data"][CONF_ORG_ID] == "home"
 
 
 async def test_pagination(hass, aioclient_mock):
@@ -180,44 +239,26 @@ async def test_restart_not_supported(hass, aioclient_mock):
 
 
 def suggested_features(result):
-    for key in result["data_schema"].schema:
-        if key == "features":
-            return key.description["suggested_value"]
-    raise AssertionError("no features field")
+    return field(result, "features").description["suggested_value"]
 
 
-async def test_feature_step_detects_access_and_bulk_actions(hass, aioclient_mock):
-    mock_api(aioclient_mock, private_status=403)
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_URL: BASE, CONF_API_KEY: "k", CONF_ORG_ID: "home", CONF_VERIFY_SSL: True},
-    )
-    capable = ["public_status", "public_control", "site_restart", "site_traffic"]
-    assert result["step_id"] == "features"
-    assert suggested_features(result) == capable
-    assert "Private" in result["description_placeholders"]["unavailable"]
-
-    fid = result["flow_id"]
-    result = await hass.config_entries.flow.async_configure(
-        fid, {"features": capable, "bulk": "select_none"})
-    assert suggested_features(result) == []
-    result = await hass.config_entries.flow.async_configure(
-        fid, {"features": ["site_restart"], "bulk": "invert"})
-    assert suggested_features(result) == ["public_status", "public_control", "site_traffic"]
-    result = await hass.config_entries.flow.async_configure(
-        fid, {"features": [], "bulk": "select_all"})
-    assert suggested_features(result) == capable
-
-    # Features the key can't use aren't accepted by the form.
+async def test_feature_step_detects_access(hass, aioclient_mock):
     import pytest
     from homeassistant.data_entry_flow import InvalidData
 
+    mock_api(aioclient_mock, private_status=403)
+    result = await start_flow(hass)
+    assert result["step_id"] == "features"
+    assert suggested_features(result) == [
+        "public_status", "public_control", "site_restart", "site_traffic"]
+    assert "Private" in result["description_placeholders"]["unavailable"]
+
+    # Features the key can't use aren't accepted by the form.
     with pytest.raises(InvalidData):
         await hass.config_entries.flow.async_configure(
-            fid, {"features": ["public_status", "private_control"]})
+            result["flow_id"], {"features": ["public_status", "private_control"]})
     result = await hass.config_entries.flow.async_configure(
-        fid, {"features": ["public_status"]})
+        result["flow_id"], {"features": ["public_status"]})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["options"] == {"features": ["public_status"]}
     await hass.async_block_till_done()

@@ -93,5 +93,7 @@ class PangolinResourceEnabled(PangolinResourceEntity, _ReadOnlyEnabled):
 class PangolinPrivateResourceEnabled(PangolinPrivateResourceEntity, _ReadOnlyEnabled):
     """Read-only enabled state of a private resource."""
 
+    _attr_translation_key = "private_resource_enabled"
+
     def __init__(self, coordinator: PangolinCoordinator, site_resource_id: int) -> None:
         super().__init__(coordinator, site_resource_id, "enabled")

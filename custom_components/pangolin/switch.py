@@ -100,6 +100,8 @@ class PangolinResourceSwitch(PangolinResourceEntity, _EnabledSwitch):
 class PangolinPrivateResourceSwitch(PangolinPrivateResourceEntity, _EnabledSwitch):
     """Turns a private Pangolin resource on or off."""
 
+    _attr_translation_key = "private_resource_enabled"
+
     def __init__(self, coordinator: PangolinCoordinator, site_resource_id: int) -> None:
         super().__init__(coordinator, site_resource_id, "enabled")
 

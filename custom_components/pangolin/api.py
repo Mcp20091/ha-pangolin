@@ -14,7 +14,11 @@ class PangolinError(Exception):
 
 
 class PangolinAuthError(PangolinError):
-    """Raised when the API key is rejected."""
+    """Raised when the API key is rejected (401) or not allowed (403)."""
+
+    def __init__(self, message: str, status: int) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class PangolinConnectionError(PangolinError):
@@ -41,7 +45,7 @@ class PangolinClient:
         session: aiohttp.ClientSession,
         base_url: str,
         api_key: str,
-        org_id: str,
+        org_id: str = "",
         verify_ssl: bool = True,
     ) -> None:
         self._session = session
@@ -69,7 +73,7 @@ class PangolinClient:
             ) as resp:
                 if resp.status in (401, 403):
                     raise PangolinAuthError(
-                        f"API key rejected ({resp.status}) for {path}"
+                        f"API key rejected ({resp.status}) for {path}", resp.status
                     )
                 if resp.status == 404:
                     raise PangolinNotFoundError(f"{path} not found (404)")
@@ -104,6 +108,11 @@ class PangolinClient:
             if not batch or len(items) >= total:
                 return items
             page += 1
+
+    async def list_orgs(self) -> list[dict[str, Any]]:
+        """Return every organization. Only root API keys may call this."""
+        data = await self._request("GET", "/orgs")
+        return (data or {}).get("orgs") or []
 
     async def get_org(self) -> dict[str, Any]:
         """Return the configured organization (used to validate setup)."""

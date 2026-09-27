@@ -5,15 +5,13 @@
         "title": "Connect to Pangolin",
         "description": "Uses the Pangolin Integration API. Self-hosted instances must have the Integration API enabled and reachable.",
         "data": {
-          "url": "Integration API URL",
+          "url": "Integration API address",
           "api_key": "API key",
-          "org_id": "Organization ID",
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
-          "url": "Base URL of your Pangolin Integration API. /v1 is added if missing.",
-          "api_key": "Organization API key with Get Organization, List Sites, Restart Site, List Resources, Update Resource, List Site Resources and Update Site Resource permissions",
-          "org_id": "The organization ID shown in the Pangolin dashboard URL"
+          "url": "Scheme and host of your Integration API. /v1 is shown beside the box and filled in for you.",
+          "api_key": "Organization API key, or a root key if you want to pick the organization from a list"
         }
       },
       "reauth_confirm": {
@@ -24,20 +22,31 @@
       },
       "features": {
         "title": "Choose features",
-        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.\n\nTo tick or untick everything, pick a bulk action and submit. The list is redrawn with the new ticks for you to review, then submit again to save.",
+        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.",
         "data": {
-          "features": "Features",
-          "bulk": "Bulk selection (optional)"
-        },
-        "data_description": {
-          "bulk": "Applied instead of saving when set."
+          "features": "Features"
+        }
+      },
+      "org": {
+        "title": "Choose organization",
+        "data": {
+          "org_id": "Organization"
+        }
+      },
+      "org_manual": {
+        "title": "Enter organization ID",
+        "description": "This is an organization-scoped key, and Pangolin only lets root keys list organizations. Enter the organization ID, which you can find in the Pangolin dashboard URL.",
+        "data": {
+          "org_id": "Organization ID"
         }
       }
     },
     "error": {
       "cannot_connect": "Could not reach the Pangolin Integration API.",
       "invalid_auth": "The API key was rejected or lacks the required permissions.",
-      "unknown": "Unexpected response from Pangolin. Check the URL and organization ID."
+      "unknown": "Unexpected response from Pangolin. Check the URL and organization ID.",
+      "no_orgs": "This key can't see any organizations.",
+      "org_denied": "This key can't access that organization. Check the ID, or use a key created in that organization."
     },
     "abort": {
       "already_configured": "This Pangolin organization is already configured.",
@@ -50,6 +59,9 @@
         "name": "Online"
       },
       "resource_enabled": {
+        "name": "Enabled"
+      },
+      "private_resource_enabled": {
         "name": "Enabled"
       }
     },
@@ -76,6 +88,9 @@
     "switch": {
       "resource_enabled": {
         "name": "Enabled"
+      },
+      "private_resource_enabled": {
+        "name": "Enabled"
       }
     }
   },
@@ -83,13 +98,9 @@
     "step": {
       "features": {
         "title": "Choose features",
-        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.\n\nTo tick or untick everything, pick a bulk action and submit. The list is redrawn with the new ticks for you to review, then submit again to save.",
+        "description": "Features this API key can use are listed and ticked. Unavailable: {unavailable}\n\nEnable/disable and restart also need the matching Update or Restart permission in Pangolin. That can't be checked in advance without changing something, so a missing permission shows as an error when you use the control.",
         "data": {
-          "features": "Features",
-          "bulk": "Bulk selection (optional)"
-        },
-        "data_description": {
-          "bulk": "Applied instead of saving when set."
+          "features": "Features"
         }
       }
     },
@@ -108,13 +119,6 @@
         "private_control": "Private resources: enable/disable switches",
         "site_restart": "Sites: restart buttons",
         "site_traffic": "Sites: data in/out sensors"
-      }
-    },
-    "bulk": {
-      "options": {
-        "select_all": "Select all",
-        "select_none": "Unselect all",
-        "invert": "Invert selection"
       }
     }
   }

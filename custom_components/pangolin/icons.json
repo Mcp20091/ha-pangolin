@@ -1,0 +1,58 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "site_online": {
+        "default": "mdi:server-network-off",
+        "state": {
+          "on": "mdi:server-network"
+        }
+      },
+      "resource_enabled": {
+        "default": "mdi:web-off",
+        "state": {
+          "on": "mdi:web"
+        }
+      },
+      "private_resource_enabled": {
+        "default": "mdi:lan-disconnect",
+        "state": {
+          "on": "mdi:lan-connect"
+        }
+      }
+    },
+    "sensor": {
+      "sites_online": {
+        "default": "mdi:server-network"
+      },
+      "data_in": {
+        "default": "mdi:download-network"
+      },
+      "data_out": {
+        "default": "mdi:upload-network"
+      },
+      "resource_health": {
+        "default": "mdi:heart-pulse",
+        "state": {
+          "healthy": "mdi:heart-pulse",
+          "degraded": "mdi:heart-half-full",
+          "offline": "mdi:heart-off",
+          "unknown": "mdi:heart-outline"
+        }
+      }
+    },
+    "switch": {
+      "resource_enabled": {
+        "default": "mdi:web-off",
+        "state": {
+          "on": "mdi:web"
+        }
+      },
+      "private_resource_enabled": {
+        "default": "mdi:lan-disconnect",
+        "state": {
+          "on": "mdi:lan-connect"
+        }
+      }
+    }
+  }
+}

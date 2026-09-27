@@ -50,10 +50,12 @@ HACS
 
 ## Setup
 
-Settings > Devices & services > Add integration > Pangolin, then enter
-- Integration API URL, for example `https://api.example.com/v1`
-- API key
-- Organization ID
+Settings > Devices & services > Add integration > Pangolin, then
+1. Enter the Integration API address, for example `https://api.example.com`. `/v1` is shown beside the box and added for you.
+2. Enter the API key.
+3. Choose the organization.
+   - With a **root** API key, pick it from a dropdown. If the key only sees one organization, it's picked for you.
+   - With an **organization** API key, type the organization ID (it's in the Pangolin dashboard URL). Pangolin only lets root keys list organizations.
 
 ### Choosing features
 
@@ -72,6 +74,8 @@ Site online sensors and the Sites online summary are always on.
 
 Pangolin org API keys can't read their own permission list, so the integration requests one item from each resource list to see what the key can read. That check changes nothing on the server. Features the key can't use are hidden, and everything else starts ticked. Write permissions (Update Resource, Update Site Resource, Restart Site) can't be checked without making a change, so if one is missing you get an error when you use that control.
 
-The Bulk selection dropdown (Select all, Unselect all, Invert selection) redraws the list with the new ticks when you submit. Submit again without a bulk action to save.
-
 To change features later, go to the integration's page and choose Configure. Entities and devices for features you turn off are removed.
+
+## Credits
+
+The Pangolin name and logo belong to Fossorial, Inc. and are used here only to identify the service this integration connects to.

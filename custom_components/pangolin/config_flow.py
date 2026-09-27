@@ -15,9 +15,9 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -31,6 +31,7 @@ from .api import (
     PangolinClient,
     PangolinConnectionError,
     PangolinError,
+    PangolinNotFoundError,
     normalize_url,
 )
 from .const import (
@@ -46,11 +47,6 @@ from .const import (
     OPT_PUBLIC,
 )
 
-CONF_BULK = "bulk"
-BULK_ALL = "select_all"
-BULK_NONE = "select_none"
-BULK_INVERT = "invert"
-
 # Features that only work when the key can read the matching resource list.
 FEATURE_NEEDS = {
     FEATURE_PUBLIC_STATUS: OPT_PUBLIC,
@@ -59,13 +55,15 @@ FEATURE_NEEDS = {
     FEATURE_PRIVATE_CONTROL: OPT_PRIVATE,
 }
 
+URL_SUFFIX = "/v1"
 PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 
 USER_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_URL): str,
+        vol.Required(CONF_URL): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.URL, suffix=URL_SUFFIX)
+        ),
         vol.Required(CONF_API_KEY): PASSWORD_SELECTOR,
-        vol.Required(CONF_ORG_ID): str,
         vol.Optional(CONF_VERIFY_SSL, default=True): bool,
     }
 )
@@ -77,7 +75,7 @@ def _client(hass: HomeAssistant, data: Mapping[str, Any]) -> PangolinClient:
         async_get_clientsession(hass, verify_ssl=verify_ssl),
         data[CONF_URL],
         data[CONF_API_KEY],
-        data[CONF_ORG_ID],
+        data.get(CONF_ORG_ID, ""),
         verify_ssl,
     )
 
@@ -90,12 +88,13 @@ def _error_key(err: PangolinError) -> str:
     return "unknown"
 
 
-class _FeatureStep:
-    """Feature checklist shared by the config and options flows.
+def _url_for_display(url: str) -> str:
+    """The form shows /v1 beside the box, so leave it out of the value."""
+    return url.removesuffix(URL_SUFFIX)
 
-    Home Assistant forms can't run scripts, so select all / unselect all /
-    invert are a dropdown that redraws the form with the new ticks.
-    """
+
+class _FeatureStep:
+    """Feature checklist shared by the config and options flows."""
 
     _access: dict[str, bool]
 
@@ -120,9 +119,7 @@ class _FeatureStep:
             "Pangolin version doesn't support them)."
         )
 
-    def _show_features(
-        self, selected: list[str], errors: dict[str, str] | None = None
-    ) -> FlowResult:
+    def _show_features(self, selected: list[str]) -> ConfigFlowResult:
         capable = self._capable()
         schema = vol.Schema(
             {
@@ -134,13 +131,6 @@ class _FeatureStep:
                         translation_key="feature",
                     )
                 ),
-                vol.Optional(CONF_BULK): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[BULK_ALL, BULK_NONE, BULK_INVERT],
-                        mode=SelectSelectorMode.DROPDOWN,
-                        translation_key="bulk",
-                    )
-                ),
             }
         )
         return self.async_show_form(  # type: ignore[attr-defined]
@@ -149,23 +139,7 @@ class _FeatureStep:
                 schema, {CONF_FEATURES: [f for f in selected if f in capable]}
             ),
             description_placeholders={"unavailable": self._unavailable_text()},
-            errors=errors or {},
         )
-
-    def _handle_features(
-        self, user_input: dict[str, Any]
-    ) -> tuple[list[str], bool]:
-        """Return the selection and whether it is final (no bulk action used)."""
-        capable = self._capable()
-        selected = [f for f in user_input.get(CONF_FEATURES, []) if f in capable]
-        bulk = user_input.get(CONF_BULK)
-        if bulk == BULK_ALL:
-            return capable, False
-        if bulk == BULK_NONE:
-            return [], False
-        if bulk == BULK_INVERT:
-            return [f for f in capable if f not in selected], False
-        return selected, True
 
 
 class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
@@ -176,21 +150,26 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
         self._access = {}
+        # orgId -> name when the key may list organizations (root keys only).
+        self._orgs: dict[str, str] | None = None
+        self._title = ""
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> PangolinOptionsFlow:
         return PangolinOptionsFlow()
 
-    async def _validate(self, data: dict[str, Any]) -> str | None:
-        """Return an error key, or None when the credentials work."""
+    async def _validate_org(self, data: dict[str, Any]) -> str | None:
+        """Check the key against one org and record what it can read."""
         client = _client(self.hass, data)
         try:
-            await client.get_org()
+            org = await client.get_org()
             await client.list_sites()
             self._access = await client.probe_access()
         except PangolinError as err:
             return _error_key(err)
+        name = ((org or {}).get("org") or {}).get("name")
+        self._title = f"Pangolin ({name or data[CONF_ORG_ID]})"
         return None
 
     async def async_step_user(
@@ -198,34 +177,101 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            user_input[CONF_URL] = normalize_url(user_input[CONF_URL])
-            user_input[CONF_ORG_ID] = user_input[CONF_ORG_ID].strip()
-            await self.async_set_unique_id(
-                f"{user_input[CONF_URL]}|{user_input[CONF_ORG_ID]}"
-            )
-            self._abort_if_unique_id_configured()
-            if (error := await self._validate(user_input)) is None:
-                self._data = user_input
-                return self._show_features(self._capable())
-            errors["base"] = error
+            data = {**user_input, CONF_URL: normalize_url(user_input[CONF_URL])}
+            try:
+                orgs = await _client(self.hass, data).list_orgs()
+            except PangolinAuthError as err:
+                if err.status == 403:
+                    # Org-scoped key: it works, it just can't list orgs.
+                    self._data, self._orgs = data, None
+                    return await self.async_step_org()
+                errors["base"] = "invalid_auth"
+            except PangolinNotFoundError:
+                self._data, self._orgs = data, None
+                return await self.async_step_org()
+            except PangolinError as err:
+                errors["base"] = _error_key(err)
+            else:
+                self._data = data
+                self._orgs = {
+                    str(o["orgId"]): str(o.get("name") or o["orgId"]) for o in orgs
+                }
+                if not self._orgs:
+                    errors["base"] = "no_orgs"
+                elif len(self._orgs) == 1:
+                    return await self.async_step_org(
+                        {CONF_ORG_ID: next(iter(self._orgs))}
+                    )
+                else:
+                    return await self.async_step_org()
+        suggested = (
+            {**user_input, CONF_URL: _url_for_display(user_input[CONF_URL])}
+            if user_input
+            else None
+        )
         return self.async_show_form(
             step_id="user",
-            data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input),
+            data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, suggested),
             errors=errors,
         )
+
+    async def async_step_org(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            org_id = str(user_input[CONF_ORG_ID]).strip()
+            data = {**self._data, CONF_ORG_ID: org_id}
+            await self.async_set_unique_id(f"{data[CONF_URL]}|{org_id}")
+            self._abort_if_unique_id_configured()
+            if (error := await self._validate_org(data)) is None:
+                self._data = data
+                return self._show_features(self._capable())
+            errors["base"] = "org_denied" if error == "invalid_auth" else error
+
+        if self._orgs:
+            field: Any = SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(value=oid, label=f"{name} ({oid})")
+                        for oid, name in sorted(
+                            self._orgs.items(), key=lambda o: o[1].lower()
+                        )
+                    ],
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+            step_id = "org"
+        else:
+            field = str
+            step_id = "org_manual"
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema({vol.Required(CONF_ORG_ID): field}), user_input
+            ),
+            errors=errors,
+        )
+
+    async def async_step_org_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self.async_step_org(user_input)
 
     async def async_step_features(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is None:
             return self._show_features(self._capable())
-        selected, final = self._handle_features(user_input)
-        if not final:
-            return self._show_features(selected)
+        capable = self._capable()
         return self.async_create_entry(
-            title=f"Pangolin ({self._data[CONF_ORG_ID]})",
+            title=self._title,
             data=self._data,
-            options={CONF_FEATURES: selected},
+            options={
+                CONF_FEATURES: [
+                    f for f in user_input.get(CONF_FEATURES, []) if f in capable
+                ]
+            },
         )
 
     async def async_step_reauth(
@@ -240,7 +286,7 @@ class PangolinConfigFlow(_FeatureStep, ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         if user_input is not None:
             data = {**entry.data, CONF_API_KEY: user_input[CONF_API_KEY]}
-            if (error := await self._validate(data)) is None:
+            if (error := await self._validate_org(data)) is None:
                 return self.async_update_reload_and_abort(entry, data=data)
             errors["base"] = error
         return self.async_show_form(
@@ -273,7 +319,11 @@ class PangolinOptionsFlow(_FeatureStep, OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is None:
             return await self.async_step_init()
-        selected, final = self._handle_features(user_input)
-        if not final:
-            return self._show_features(selected)
-        return self.async_create_entry(data={CONF_FEATURES: selected})
+        capable = self._capable()
+        return self.async_create_entry(
+            data={
+                CONF_FEATURES: [
+                    f for f in user_input.get(CONF_FEATURES, []) if f in capable
+                ]
+            }
+        )
